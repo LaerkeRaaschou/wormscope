@@ -9,7 +9,7 @@ def apply():
         import PyQt6
     except ImportError:
         return
-    
+
     plugins = os.path.join(os.path.dirname(PyQt6.__file__), "Qt6", "plugins")
 
     if os.path.isdir(plugins):

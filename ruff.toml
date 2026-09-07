@@ -1,0 +1,34 @@
+# Lint rules for wormscope.
+#
+# Deliberately small. This catches mistakes — dead imports, undefined names,
+# stray whitespace — and does NOT enforce a house style. Nothing here ever
+# reformats your code: the pre-commit hook runs `ruff check` without --fix, so
+# it reports and you decide.
+#
+# Try it by hand:  ruff check .
+
+line-length = 100        # only flags runaway lines; most of the code sits near 79
+
+exclude = [
+    "wormscope_gui3.py", # the frozen pre-refactor original, kept for parity tests
+    ".venv",
+]
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes — undefined names, unused imports and variables
+    "W",   # pycodestyle warnings — trailing whitespace, missing final newline
+]
+
+ignore = [
+    # `m == False` on a numpy array is elementwise and entirely intentional
+    # (see tests/unit/test_geometry.py). Ruff's suggested `not m` would be a
+    # bug here, so the rule is off. Turn it back on if this stops being a
+    # numpy-heavy codebase.
+    "E712",
+]
+
+[lint.per-file-ignores]
+# A package __init__ re-exports names it doesn't itself use. That is the job.
+"__init__.py" = ["F401"]

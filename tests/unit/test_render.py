@@ -7,7 +7,6 @@ contains come from exactly the same code. That is worth keeping.
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from wormscope.config import MASK_ALPHA, MASK_SEL_RGB, MASK_UNSEL_RGB
 from wormscope.core.models import MaskStore, Worm

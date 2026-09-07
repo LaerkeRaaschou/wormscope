@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (QApplication, QFileDialog, QInputDialog,
-                             QMessageBox)
+from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMessageBox
 
 from ..core.metrics import plot_specs, unit_scales
 from ..io.export import export_overlay

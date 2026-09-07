@@ -297,6 +297,45 @@ Rules of thumb that keep this easy to extend:
 - The main window owns state; mixins are behaviour grouped by topic, so adding a
   feature usually means one new method in one file.
 
+## Development setup
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/pre-commit install --install-hooks
+```
+
+`requirements.txt` covers the GUI, the optional video export and the dev tools.
+SAM2 and torch are not in it — see *SAM2 setup* above.
+
+### The hooks
+
+`pre-commit install --install-hooks` wires up two stages, both configured in
+`.pre-commit-config.yaml`:
+
+| When | What runs | Roughly |
+|---|---|---|
+| every commit | whitespace/EOF/merge-marker hygiene, `ruff check`, then `tests/unit` + `tests/test_contracts.py` | seconds |
+| push, on `main` only | the whole suite, coverage floor included (`scripts/pytest_push.sh`) | minutes |
+
+Pushing any other branch skips the suite: side branches are for work in
+progress. The check reads the branch you are standing on, so
+`git push origin side:main` slips past it.
+
+Nothing reformats your code. The hygiene hooks touch whitespace only, and ruff
+runs without `--fix` — it reports, you decide. Its rules live in `ruff.toml` and
+are deliberately narrow (`E`, `F`, `W`): dead imports, undefined names, stray
+whitespace. `wormscope_gui3.py` is excluded everywhere, so the frozen original
+stays byte-for-byte as the parity tests expect.
+
+Useful:
+
+```bash
+pre-commit run --all-files    # run every commit-stage hook over the whole repo
+ruff check .                  # just the linter
+git commit -n                 # skip the hooks for one commit, knowingly
+```
+
 ## Tests
 
 Both scripts compare this package against `wormscope_gui3.py`, so they only run

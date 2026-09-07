@@ -1,0 +1,57 @@
+# Checks that run automatically around git.
+#
+# Install once, after  pip install -r requirements.txt :
+#
+#     pre-commit install --install-hooks
+#
+# That reads default_install_hook_types below and wires up both stages:
+#   commit    hygiene + ruff + the fast tests   (a few seconds)
+#   push      the full suite, but only on main  (scripts/pytest_push.sh)
+#
+# Run everything by hand at any time:   pre-commit run --all-files
+# Skip it for one commit, knowingly:    git commit -n
+#
+# Nothing here reformats your code. The hygiene hooks touch whitespace only,
+# and ruff runs without --fix: it reports, you decide.
+
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
+# The frozen pre-refactor original. It is kept byte-for-byte as the reference
+# the parity tests compare against, so no hook may tidy it.
+exclude: '^wormscope_gui3\.py$'
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace     # spaces at the end of a line
+      - id: end-of-file-fixer       # exactly one newline at the end of a file
+      - id: check-merge-conflict    # a <<<<<<< left behind in a file
+      - id: check-added-large-files # a checkpoint or a video staged by accident
+      - id: check-yaml              # this file, and anything else you add
+      - id: check-case-conflict     # names that collide on macOS' case-blind disk
+      - id: debug-statements        # a forgotten breakpoint()
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.6
+    hooks:
+      - id: ruff-check
+        # Rules live in ruff.toml. No --fix: nothing is rewritten behind you.
+
+  - repo: local
+    hooks:
+      - id: pytest-fast
+        name: pytest (unit + contract)
+        entry: scripts/pytest_fast.sh
+        language: script
+        pass_filenames: false
+        always_run: true
+
+      - id: pytest-full
+        name: pytest (full suite — only on main)
+        entry: scripts/pytest_push.sh
+        language: script
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

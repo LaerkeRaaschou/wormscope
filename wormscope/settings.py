@@ -1,4 +1,4 @@
-""" 
+"""
     Creates a JSON that remembers sam paths
 
     {

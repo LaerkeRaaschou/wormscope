@@ -201,7 +201,7 @@ def test_export_frame_does_not_modify_the_cached_frame(dataset):
 
 
 def test_export_frame_of_an_absent_worm_is_just_the_frame():
-    from wormscope.core.models import Dataset, FrameSource
+    from wormscope.core.models import FrameSource
     frames = FrameSource([np.full((10, 10, 3), 50, np.uint8)], lambda a: a)
     worm = Worm(obj_id=1)                     # no bbox anywhere
     out = export_frame(frames, [worm], MaskStore((10, 10)), 0)

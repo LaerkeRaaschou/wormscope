@@ -9,7 +9,6 @@ a mask saved under the wrong name.
 from __future__ import annotations
 
 import numpy as np
-import pytest
 from PyQt6.QtWidgets import QInputDialog, QMessageBox
 
 from tests.conftest import build_dataset
