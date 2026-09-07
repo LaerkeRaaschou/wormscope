@@ -8,8 +8,6 @@ To plug in a different segmenter, implement the same three methods
 :data:`wormscope.segmentation.SEGMENTER_FACTORY` at your class.
 """
 
-from __future__ import annotations
-
 import time
 from pathlib import Path
 

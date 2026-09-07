@@ -3,8 +3,6 @@
 These classes know nothing about Qt — they can be used from scripts and tests.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from pathlib import Path
 

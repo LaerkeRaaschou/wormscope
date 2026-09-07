@@ -1,7 +1,5 @@
 """The Video canvas: whole frame + masks, with the zoom viewport rectangle."""
 
-from __future__ import annotations
-
 from PyQt6.QtCore import QRectF, Qt, pyqtSignal
 from PyQt6.QtGui import QImage, QPainter, QPen
 from PyQt6.QtWidgets import QWidget

@@ -1,7 +1,5 @@
 """Mask editing in the Zoom canvas: tools, brush strokes and metric refresh."""
 
-from __future__ import annotations
-
 from ..core.geometry import stamp_disk, stamp_stroke
 from ..core.kinematics import refresh_kinematics
 from ..core.metrics import apply_mask_stats

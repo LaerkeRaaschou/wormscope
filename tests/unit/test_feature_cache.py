@@ -9,8 +9,6 @@ Tested against a fake predictor that behaves the same way, so none of this
 needs torch or a checkpoint.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from wormscope.segmentation.feature_cache import FeatureCache

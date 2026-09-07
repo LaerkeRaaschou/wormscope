@@ -5,8 +5,6 @@ The pixel work itself lives in :mod:`wormscope.render`; this mixin only decides
 *what* to composite for the current state.
 """
 
-from __future__ import annotations
-
 import numpy as np
 
 from ..config import ONION_ALPHA, ONION_RGB, SKEL_RGB

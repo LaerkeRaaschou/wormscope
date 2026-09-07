@@ -1,7 +1,5 @@
 """Writing results back out: measurements.csv and measurements_plot.png."""
 
-from __future__ import annotations
-
 import csv
 
 import numpy as np

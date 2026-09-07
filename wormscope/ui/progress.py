@@ -15,8 +15,6 @@ Two ways to drive it:
   main thread only receives progress signals.
 """
 
-from __future__ import annotations
-
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
                              QProgressBar, QPushButton, QSizePolicy,

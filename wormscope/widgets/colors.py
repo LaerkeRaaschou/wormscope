@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from PyQt6.QtGui import QColor
 
 from ..config import PANEL_BG_RGB, VIEWPORT_RGB

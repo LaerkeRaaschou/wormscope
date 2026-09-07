@@ -15,8 +15,6 @@ To add a feature: put the widget in layout.py and the behaviour in the matching
 mixin (or a new one — add it to the bases below).
 """
 
-from __future__ import annotations
-
 import numpy as np
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QMainWindow

@@ -7,8 +7,6 @@ can stop early, and a worm's prompts need not span the whole clip — so a count
 can march past its own total.
 """
 
-from __future__ import annotations
-
 from PyQt6.QtWidgets import QFrame
 
 from wormscope.ui.progress import Progress, ProgressPanel

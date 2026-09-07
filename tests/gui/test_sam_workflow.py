@@ -13,8 +13,6 @@ Marked `slow`: these drive a real worker thread. `pytest -m "not slow"` skips
 them.
 """
 
-from __future__ import annotations
-
 import time
 
 import numpy as np

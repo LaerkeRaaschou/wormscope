@@ -6,8 +6,6 @@ falls out of step here shows up much later as a worm that cannot be selected or
 a mask saved under the wrong name.
 """
 
-from __future__ import annotations
-
 import numpy as np
 from PyQt6.QtWidgets import QInputDialog, QMessageBox
 

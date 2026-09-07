@@ -8,8 +8,6 @@ somebody's data folder looks like afterwards.
 Skipped when ``wormscope_gui3.py`` is not around; see ``WORMSCOPE_ORIGINAL``.
 """
 
-from __future__ import annotations
-
 import importlib.util
 import os
 import shutil

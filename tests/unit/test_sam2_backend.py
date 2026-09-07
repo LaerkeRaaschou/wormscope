@@ -7,8 +7,6 @@ behaviour *with* a model is covered by the workflow tests, driven against a
 stand-in backend.
 """
 
-from __future__ import annotations
-
 import numpy as np
 import pytest
 from PIL import Image

@@ -6,8 +6,6 @@ CSV rows are matched on the *trailing integer* in each filename, so
 frame even though none of the names look alike.
 """
 
-from __future__ import annotations
-
 import csv
 
 import numpy as np

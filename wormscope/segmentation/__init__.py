@@ -11,8 +11,6 @@ The SAM2 config + checkpoint paths come from :mod:`wormscope.settings`, which
 remembers them between runs.
 """
 
-from __future__ import annotations
-
 from .sam2_backend import (MissingSam2Paths, Sam2Backend,  # noqa: F401
                            hydra_config_name, pair_warning, prepare_jpeg_dir,
                            sam2_config_dir, sam2_package_dir)

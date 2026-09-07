@@ -16,8 +16,6 @@ correct. Retiring it is a real decision: after that, nothing checks the two
 against each other again.
 """
 
-from __future__ import annotations
-
 import numpy as np
 import pytest
 

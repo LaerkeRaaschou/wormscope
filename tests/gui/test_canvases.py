@@ -5,8 +5,6 @@ touches a mask. That is what lets the same canvas be driven by a test, or
 reused somewhere else, without dragging the window along.
 """
 
-from __future__ import annotations
-
 import numpy as np
 import pytest
 from PyQt6.QtCore import QEvent, QPoint, QPointF, Qt

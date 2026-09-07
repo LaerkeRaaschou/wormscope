@@ -8,8 +8,6 @@ leading slash and fails with ``Cannot find primary config 'Users/…'``.
 A stand-in sam2 package stands in for the real (multi-GB) one.
 """
 
-from __future__ import annotations
-
 import sys
 import types
 

@@ -6,8 +6,6 @@ state, and everything that needs frames is switched off in it rather than
 failing when clicked.
 """
 
-from __future__ import annotations
-
 import inspect
 from pathlib import Path
 

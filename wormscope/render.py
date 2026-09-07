@@ -4,8 +4,6 @@ Nothing here touches Qt, so these helpers can be unit-tested or reused in a
 headless batch script.
 """
 
-from __future__ import annotations
-
 import numpy as np
 
 from .config import MASK_ALPHA, MASK_SEL_RGB, MASK_UNSEL_RGB

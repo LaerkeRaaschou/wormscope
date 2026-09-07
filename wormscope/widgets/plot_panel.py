@@ -12,8 +12,6 @@ change of units. The real number is never lost: hover the curve and it appears
 in a small box.
 """
 
-from __future__ import annotations
-
 import numpy as np
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QLabel

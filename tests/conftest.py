@@ -12,8 +12,6 @@ Both are set with ``setdefault``/an explicit temp path rather than assumed, so
 running one test file directly behaves exactly like running the whole suite.
 """
 
-from __future__ import annotations
-
 import json
 import os
 import sys

@@ -7,8 +7,6 @@ Two rules run through all of it:
   the correction survive the next SAM2 run (it becomes a mask prompt).
 """
 
-from __future__ import annotations
-
 import numpy as np
 import pytest
 from PyQt6.QtCore import QEvent, QPointF, Qt

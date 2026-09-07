@@ -12,8 +12,6 @@ to change them later without the GUI. The backend itself is swappable — see
 :mod:`wormscope.segmentation`.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import numpy as np

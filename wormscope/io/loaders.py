@@ -12,8 +12,6 @@ Frame alignment is keyed on the trailing integer in each filename, so original
 frames, binary masks and CSV rows line up even if their name prefixes differ.
 """
 
-from __future__ import annotations
-
 import csv
 from pathlib import Path
 

@@ -1,7 +1,5 @@
 """Centroid speed / acceleration, in pixels."""
 
-from __future__ import annotations
-
 from ..config import ACCEL_METRIC, SPEED_METRIC
 
 

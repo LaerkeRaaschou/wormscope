@@ -6,8 +6,6 @@ so the units stay px/frame — drop that and the numbers silently become
 "distance since last seen", which looks fine on a plot and is wrong.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from wormscope.config import ACCEL_METRIC, SPEED_METRIC

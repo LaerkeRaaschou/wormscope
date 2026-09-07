@@ -4,8 +4,6 @@
 edit a mask, this runs, and the info panel, the plots and the CSV all follow.
 """
 
-from __future__ import annotations
-
 import numpy as np
 import pytest
 

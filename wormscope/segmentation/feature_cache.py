@@ -17,8 +17,6 @@ Deliberately free of torch and Qt imports: it only ever moves opaque objects
 around, which keeps it unit-testable without a model.
 """
 
-from __future__ import annotations
-
 import time
 from collections import OrderedDict
 

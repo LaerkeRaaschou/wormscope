@@ -14,8 +14,6 @@ Jobs run in the order they were queued. A tracking job checks a stop flag
 between frames, so Stop takes effect within one frame rather than at the end.
 """
 
-from __future__ import annotations
-
 import atexit
 import queue
 import threading

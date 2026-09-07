@@ -5,8 +5,6 @@ leave the GUI in a consistent, visible state (the mask helpers below do that for
 you). Keep new actions symmetric — whatever redo does, undo must exactly undo.
 """
 
-from __future__ import annotations
-
 from ..config import UNDO_LIMIT
 
 

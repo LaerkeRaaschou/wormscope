@@ -5,8 +5,6 @@ exactly why it is worth tests — a broken frame counter is obvious in use and
 invisible in a diff.
 """
 
-from __future__ import annotations
-
 import numpy as np
 import pytest
 from PyQt6.QtCore import QEvent, Qt

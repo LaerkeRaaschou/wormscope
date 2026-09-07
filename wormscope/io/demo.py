@@ -1,7 +1,5 @@
 """Editable, in-memory demo dataset used when no data folder is available."""
 
-from __future__ import annotations
-
 import numpy as np
 from PIL import Image, ImageDraw
 

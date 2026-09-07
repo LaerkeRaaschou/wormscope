@@ -22,8 +22,6 @@ usually nudges many by a hair.
 Run just this layer:  pytest -m golden
 """
 
-from __future__ import annotations
-
 import hashlib
 
 import numpy as np

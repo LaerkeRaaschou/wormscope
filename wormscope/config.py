@@ -4,8 +4,6 @@ Nothing here imports Qt or numpy, so any module (including tests) can read the
 configuration without pulling in the GUI stack.
 """
 
-from __future__ import annotations
-
 import re
 
 # --------------------------------------------------------------------------- #

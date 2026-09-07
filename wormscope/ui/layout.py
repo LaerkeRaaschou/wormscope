@@ -20,8 +20,6 @@ The controls under both images are deliberately compact (CONTROL_H): the frames
 are what people look at, so the widgets around them stay out of the way.
 """
 
-from __future__ import annotations
-
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (QAbstractButton, QButtonGroup, QCheckBox, QFrame,

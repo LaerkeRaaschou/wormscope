@@ -5,8 +5,6 @@ Most of these exist to make files from different pipeline stages line up:
 to the same frame, and they do it through `last_int`.
 """
 
-from __future__ import annotations
-
 import numpy as np
 import pytest
 

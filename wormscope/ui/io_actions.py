@@ -1,7 +1,5 @@
 """File-level actions: open / import a dataset, calibrate units, save, export."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMessageBox

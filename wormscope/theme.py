@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from functools import lru_cache
 from importlib.resources import files
 from string import Template

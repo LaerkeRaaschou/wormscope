@@ -4,8 +4,6 @@ The widget only reports *what the user did* (paint here, stroke finished, SAM
 point here); it never touches the masks itself — the main window does that.
 """
 
-from __future__ import annotations
-
 from PyQt6.QtCore import QRectF, Qt, pyqtSignal
 from PyQt6.QtGui import QImage, QPainter
 from PyQt6.QtWidgets import QWidget

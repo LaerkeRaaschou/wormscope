@@ -6,8 +6,6 @@ has to answer "does this worm exist on this frame?" without inventing an answer
 that makes it exist.
 """
 
-from __future__ import annotations
-
 import numpy as np
 import pytest
 from PIL import Image

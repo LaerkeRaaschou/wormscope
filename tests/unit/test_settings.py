@@ -9,8 +9,6 @@ conftest.py points WORMSCOPE_SETTINGS at a temporary file for the whole
 session, so none of this can touch your real ~/.wormscope/settings.json.
 """
 
-from __future__ import annotations
-
 import os
 
 import pytest

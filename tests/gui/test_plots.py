@@ -6,8 +6,6 @@ are actually looking at. The real number comes back on hover, so nothing is
 lost by doing that.
 """
 
-from __future__ import annotations
-
 import numpy as np
 import pytest
 

@@ -13,8 +13,6 @@ pass, that is the signal the change was bigger than you thought.
 Run just this layer:  pytest -m contract
 """
 
-from __future__ import annotations
-
 import ast
 import importlib
 import inspect

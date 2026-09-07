@@ -5,8 +5,6 @@ rename or a delete made obsolete, rewrites measurements.csv and regenerates the
 overview plot. Getting the delete list wrong loses somebody's data.
 """
 
-from __future__ import annotations
-
 import csv
 
 import numpy as np

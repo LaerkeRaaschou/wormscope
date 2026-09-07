@@ -1,7 +1,5 @@
 """Per-worm metric bookkeeping shared by the GUI and by batch scripts."""
 
-from __future__ import annotations
-
 from ..config import ACCEL_METRIC, SPEED_METRIC
 from .geometry import mask_stats
 from .kinematics import refresh_kinematics

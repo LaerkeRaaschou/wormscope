@@ -4,8 +4,6 @@ None of this touches Qt, so what the GUI draws and what the exported video
 contains come from exactly the same code. That is worth keeping.
 """
 
-from __future__ import annotations
-
 import numpy as np
 
 from wormscope.config import MASK_ALPHA, MASK_SEL_RGB, MASK_UNSEL_RGB

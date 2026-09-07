@@ -5,8 +5,6 @@ being drawn — that is the point. If a change makes one of these fail, read the
 number in the failure and ask whether the new one is also arrivable at by hand.
 """
 
-from __future__ import annotations
-
 import numpy as np
 import pytest
 

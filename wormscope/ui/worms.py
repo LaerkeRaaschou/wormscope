@@ -1,7 +1,5 @@
 """Managing the worm list: add, delete and reassign IDs (all undoable)."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from PyQt6.QtWidgets import QInputDialog, QMessageBox

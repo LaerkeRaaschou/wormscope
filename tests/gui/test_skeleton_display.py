@@ -6,8 +6,6 @@ of those puts a confident red skeleton over an unsegmented worm — which is how
 this was noticed in the first place.
 """
 
-from __future__ import annotations
-
 import numpy as np
 import pytest
 from PIL import Image
