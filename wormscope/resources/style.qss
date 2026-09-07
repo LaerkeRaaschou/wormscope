@@ -1,0 +1,76 @@
+/* ---- base ---------------------------------------------------- */
+QMainWindow, QWidget {
+    background-color: $bg;
+    color: $blue;
+    font-size: 13px;
+}
+QLabel { background: transparent; }
+
+/* ---- group boxes --------------------------------------------- */
+QGroupBox {
+    background-color: $panel;
+    border: 1px solid $grid;
+    border-radius: 8px;
+    margin-top: 14px;
+    padding: 8px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 10px;
+    padding: 0 4px;
+    color: $blue;
+    font-weight: 600;
+}
+
+/* ---- buttons -------------------------------------------------- */
+QPushButton {
+    background-color: $blue;
+    color: white;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    padding: 4px 10px;
+}
+QPushButton:hover    { background-color: $blue_hi; }
+QPushButton:pressed  { background-color: $blue_lo; }
+QPushButton:checked  { background-color: $blue_lo; border: 2px solid $blue_edge; }
+QPushButton:disabled { background-color: $disabled_bg; color: $disabled_fg; }
+QPushButton#compact  { padding: 1px 7px; }
+
+/* ---- lists ---------------------------------------------------- */
+QListWidget {
+    background-color: white;
+    border: 1px solid $grid;
+    border-radius: 6px;
+    padding: 2px;
+}
+QListWidget::item          { padding: 4px 6px; border-radius: 4px; }
+QListWidget::item:selected { background-color: $blue; color: white; }
+
+/* ---- progress panel ------------------------------------------- */
+/* Same 8px corner and hairline border as a group box, so the panel reads as
+   part of the control column rather than a box dropped on top of it. */
+QFrame#progressPanel {
+    background-color: $bg;
+    border: 1px solid $grid;
+    border-radius: 8px;
+}
+QProgressBar {
+    background-color: $grid;
+    border: none;
+    border-radius: 4px;          /* half the 8px bar height: fully rounded ends */
+}
+QProgressBar::chunk {
+    background-color: $blue_hi;
+    border-radius: 4px;
+}
+
+/* ---- sliders -------------------------------------------------- */
+QSlider::groove:horizontal   { height: 6px; background: $grid; border-radius: 3px; }
+QSlider::sub-page:horizontal { background: $blue_hi; border-radius: 3px; }
+QSlider::handle:horizontal {
+    background: $blue;
+    width: 14px;
+    margin: -5px 0;      /* overhang the 6px groove, stays centred */
+    border-radius: 7px;
+}
