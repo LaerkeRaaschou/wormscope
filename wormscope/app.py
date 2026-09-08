@@ -1,3 +1,6 @@
+"""
+Opens the GUI with the dataset (if called)
+"""
 import sys
 from pathlib import Path
 
