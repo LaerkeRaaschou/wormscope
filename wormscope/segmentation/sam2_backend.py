@@ -246,6 +246,28 @@ class Sam2Backend:
               f"({len(points)} pts): {time.perf_counter() - t0:.2f}s")
         return self._mask_of(obj_id, ids, logits)
 
+    def set_points(self, frame_idx, obj_id, points, labels):
+        """Make this frame's point prompts exactly `points` — used by undo and
+        redo. An empty list removes the frame's prompts altogether."""
+        if points:
+            return self.add_points(frame_idx, obj_id, points, labels)
+        self.clear_frame(frame_idx, obj_id)
+        return None
+
+    def clear_frame(self, frame_idx, obj_id):
+        """Remove every prompt (points or mask) this worm has on one frame. If
+        that was its last prompt anywhere, its session is dropped entirely."""
+        oid = int(obj_id)
+        state = self.sessions.get(oid)
+        if state is None or oid not in state["obj_id_to_idx"]:
+            return
+        self.predictor.clear_all_prompts_in_frame(
+            state, int(frame_idx), oid, need_output=False)
+        obj_idx = state["obj_id_to_idx"][oid]
+        if not (state["point_inputs_per_obj"][obj_idx]
+                or state["mask_inputs_per_obj"][obj_idx]):
+            self.forget(oid)
+
     def add_mask(self, frame_idx, obj_id, mask):
         """Use an existing (e.g. brush-corrected) mask as the prompt for this
         frame — the mask equivalent of add_points. That frame becomes an anchor

@@ -112,6 +112,7 @@ class SamMixin:
             self.sam.shutdown()
             self.sam = None
             self._sam_ready = False
+        self._point_jobs.clear()             # their jobs died with the worker
 
     def _ensure_segmenter(self, explain=True):
         """Make sure the worker exists and SAM2 has files to load.
@@ -166,7 +167,16 @@ class SamMixin:
                               "SAM point.")
 
     def _on_prompt_done(self, oid, frame, mask, kind):
-        """A point or mask prompt came back with SAM2's version of the mask."""
+        """A point or mask prompt came back with SAM2's version of the mask.
+
+        For a point click this is one undo step covering both the point and the
+        mask it produced: undo removes the marker, takes the point out of
+        SAM2's session and puts the old mask back."""
+        job = None
+        if kind == "points" and self._point_jobs:
+            job = self._point_jobs.popleft()  # jobs run in order: FIFO matches
+            if job[:2] != (oid, frame):
+                job = None
         if mask is None:
             return
         before = self.masks.get(oid, frame).copy()
@@ -177,9 +187,35 @@ class SamMixin:
         if w is not None:
             self._recompute(w, frame)
         after = self.masks.get(oid, frame).copy()
-        self._push_action(lambda: self._restore_mask(oid, frame, before),
-                          lambda: self._restore_mask(oid, frame, after))
+        if job is None:                      # a mask prompt
+            self._push_action(lambda: self._restore_mask(oid, frame, before),
+                              lambda: self._restore_mask(oid, frame, after))
+        else:
+            _o, _f, pts_before, pts_after, was_prompted, was_anchored, was_hand = job
+            self._push_action(
+                lambda: self._restore_point_step(oid, frame, before, pts_before,
+                                                 was_prompted, was_anchored,
+                                                 was_hand),
+                lambda: self._restore_point_step(oid, frame, after, pts_after,
+                                                 True, True, False))
         self._after_edit()
+
+    def _restore_point_step(self, oid, frame, mask, points, prompted, anchored,
+                            hand_edited):
+        """Undo/redo of one SAM click: the frame's points, SAM2's copy of
+        them, the bookkeeping sets and the mask all go back together."""
+        key = (oid, frame)
+        if points:
+            self._sam_points[key] = list(points)
+        else:
+            self._sam_points.pop(key, None)
+        (self._anchored.add if anchored else self._anchored.discard)(key)
+        (self._hand_edited.add if hand_edited else self._hand_edited.discard)(key)
+        (self._prompted_worms.add if prompted else self._prompted_worms.discard)(oid)
+        if self.sam is not None:
+            self.sam.set_points(frame, oid, [(p[0], p[1]) for p in points],
+                                [p[2] for p in points])
+        self._restore_mask(oid, frame, mask)  # also redraws the markers
 
     def _protected(self, oid, frame):
         """True when a tracking result for this frame must be discarded.
@@ -214,6 +250,8 @@ class SamMixin:
 
     def _on_sam_job_failed(self, kind, message):
         self.progress_panel.finish()
+        if kind == "points" and self._point_jobs:
+            self._point_jobs.popleft()       # that click produced no mask
         if kind in ("points", "mask", "track", "prewarm"):
             QMessageBox.warning(self, "SAM2", f"{kind} failed:\n\n{message}")
 
@@ -226,8 +264,16 @@ class SamMixin:
         if not self._ensure_segmenter():
             return
         oid = self.selected.obj_id
-        pts = self._sam_points.setdefault((oid, self.frame), [])
+        key = (oid, self.frame)
+        before = list(self._sam_points.get(key, []))
+        pts = self._sam_points.setdefault(key, [])
         pts.append((float(x), float(y), int(label)))
+        # Remembered until SAM2 answers, so the point and its mask become ONE
+        # undo step (see _on_prompt_done).
+        self._point_jobs.append((oid, self.frame, before, list(pts),
+                                 oid in self._prompted_worms,
+                                 key in self._anchored,
+                                 key in self._hand_edited))
         self._render_overlay()               # the marker appears immediately
         self._prompted_worms.add(oid)
         self.progress_panel.start("SAM2", 0, f"worm {oid} — frame {self.frame}")

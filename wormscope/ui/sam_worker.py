@@ -82,6 +82,12 @@ class SamWorker(QThread):
             return mask
         self.submit("points", job)
 
+    def set_points(self, frame_idx, obj_id, points, labels):
+        """Silently resync one frame's point prompts (undo/redo). Emits no
+        promptDone, so it never becomes a new undo step of its own."""
+        self.submit("points-sync", lambda backend: backend.set_points(
+            frame_idx, obj_id, points, labels))
+
     def add_mask(self, frame_idx, obj_id, mask):
         def job(backend):
             out = backend.add_mask(frame_idx, obj_id, mask)

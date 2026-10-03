@@ -15,6 +15,8 @@ To add a feature: put the widget in layout.py and the behaviour in the matching
 mixin (or a new one — add it to the bases below).
 """
 
+from collections import deque
+
 import numpy as np
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QMainWindow
@@ -69,6 +71,7 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
         self.sam = None                      # SamWorker: SAM2 on its own thread
         self._sam_ready = False              # its backend finished loading
         self._sam_points = {}                # (obj_id, frame) -> [(x, y, label), ...]
+        self._point_jobs = deque()           # SAM clicks awaiting their mask (FIFO)
         self._hand_edited: set = set()       # (obj_id, frame) painted by hand,
         self._anchored: set = set()          # ...and those already given to SAM2
         self._prompted_worms: set = set()    # worms SAM2 has prompts for
@@ -93,17 +96,33 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
             self._recompute_kinematics(w)
 
     def _finish_setup(self):
-        self.list.setCurrentRow(-1)          # start with NO worm selected
+        self.list.setCurrentRow(-1)          # cleared; _start_with_worm picks one
         self.plot.set_worm(None)
         self._update_title()
         if self.n:
             self.set_frame(0)
+            self._start_with_worm()
             # Load the model and embed frame 0 in the background: that is most
             # of the cost of the first SAM click, and there is no reason to make
             # the user wait for it while they are still looking at the video.
             self._start_sam(warm=True)
         else:
             self._show_empty_state()
+
+    def _start_with_worm(self):
+        """Open a video with a worm already selected, ready to segment.
+
+        A fresh video (no masks yet) gets an empty worm #0 with the new-worm
+        tool armed, so the first click on the video segments it. A video that
+        already has worms selects the first one. Not put on the undo stack:
+        it is the starting state, not an edit."""
+        if self.worms:
+            self.select_worm(self.worms[0])
+            return
+        w = Worm(obj_id=0)
+        self._insert_worm(w)                 # WormListMixin
+        self.select_worm(w)
+        self._arm_new_worm_tool(w.obj_id)
 
     def _show_empty_state(self):
         """No video loaded: grey out everything that needs frames and say how
@@ -280,7 +299,7 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
     # --- window events -------------------------------------------------------
     def showEvent(self, e):
         super().showEvent(e)
-        if not self._fitted and self.selected is None and self.zoomv.has_image():
+        if not self._fitted and self._wants_whole_frame() and self.zoomv.has_image():
             self.zoomv.frame_fit()           # sensible default framing at startup
             self._fitted = True
 
@@ -290,5 +309,11 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
-        if self.selected is None and self.zoomv.has_image():
+        if self._wants_whole_frame() and self.zoomv.has_image():
             self.zoomv.frame_fit()
+
+    def _wants_whole_frame(self):
+        """True when there is no worm to zoom in on: none is selected, or the
+        selected one has no mask on this frame yet (e.g. the empty worm #0 a
+        new video starts with). The view then shows the whole frame."""
+        return self.selected is None or self.selected.bbox(self.frame) is None
