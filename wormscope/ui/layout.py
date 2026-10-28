@@ -11,9 +11,9 @@ Layout::
     | worm list|  |     (frame + masks)      |  |  (4 slots)|
     |  + Info  |  | [<][▶][>] frame ===  [E] |  |           |
     +----------+--+--------------------------+  |           |
-    | tools |            ZOOM                |  |           |
-    | SAM2  |        (edit here)             |  |           |
-    | view  |  controls left, canvas right   |  |           |
+    | view  |            ZOOM                |  |           |
+    | [AI]  |        (edit here)             |  |           |
+    | [Man] |  controls left, canvas right   |  |           |
     +----------------------------------------+  +-----------+
 
 The controls under both images are deliberately compact (CONTROL_H): the frames
@@ -27,14 +27,13 @@ from PyQt6.QtWidgets import (QAbstractButton, QButtonGroup, QCheckBox, QFrame,
                              QListWidget, QPushButton, QScrollArea, QSlider,
                              QVBoxLayout, QWidget)
 
-from ..config import (BRUSH_MAX, BRUSH_MIN, PLAYBACK_FPS, SMOOTH_WINDOW,
-                      ZOOM_MAX, ZOOM_MIN)
+from ..config import BRUSH_MAX, BRUSH_MIN, PLAYBACK_FPS, SMOOTH_WINDOW
 from ..widgets import PlotPanel, VideoView, ZoomView
 from .progress import ProgressPanel
 
 
 CONTROL_H = 24          # height of the small controls around the images
-ZOOM_CONTROL_W = 196    # width of the Zoom panel's control column
+ZOOM_CONTROL_W = 236    # width of the Zoom panel's control column
 ROW_SPACING = 4
 
 
@@ -93,6 +92,42 @@ class LayoutMixin:
             sc = QShortcut(QKeySequence(key), self)
             sc.setContext(Qt.ShortcutContext.WindowShortcut)
             sc.activated.connect(lambda d=delta: self._step(d))
+            self._shortcuts.append(sc)
+        # + / − zoom the editing canvas. "=" is the unshifted + key on US
+        # layouts, and the keypad keys arrive as the same sequences.
+        for key, d in (("+", 1), ("=", 1), ("-", -1)):
+            sc = QShortcut(QKeySequence(key), self)
+            sc.setContext(Qt.ShortcutContext.WindowShortcut)
+            sc.activated.connect(lambda d=d: self._zoom_step(d))
+            self._shortcuts.append(sc)
+        # Pan the editing canvas: W A S D, or Alt (Option on a Mac) + arrows —
+        # the plain arrows already step frames.
+        for keys, (dx, dy) in ((("W", "Alt+Up"), (0, -1)),
+                               (("S", "Alt+Down"), (0, 1)),
+                               (("A", "Alt+Left"), (-1, 0)),
+                               (("D", "Alt+Right"), (1, 0))):
+            for key in keys:
+                sc = QShortcut(QKeySequence(key), self)
+                sc.setContext(Qt.ShortcutContext.WindowShortcut)
+                sc.activated.connect(lambda x=dx, y=dy: self._pan_step(x, y))
+                self._shortcuts.append(sc)
+        # Undo / redo / save. Qt's "Ctrl" is ⌘ Command on a Mac and "Meta" is the
+        # Control key there, so listing both makes ⌘Z and Ctrl+Z work on
+        # every platform. As shortcuts they also work while a slider or the
+        # worm list has focus.
+        for key, slot in (("Ctrl+Z", self._undo_action),
+                          ("Meta+Z", self._undo_action),
+                          ("Ctrl+Shift+Z", self._redo_action),
+                          ("Meta+Shift+Z", self._redo_action),
+                          ("Ctrl+Y", self._redo_action),
+                          # Save: ⌘S / Ctrl+S, and ⌘⇧S / Ctrl+Shift+S
+                          ("Ctrl+S", self._save),
+                          ("Meta+S", self._save),
+                          ("Ctrl+Shift+S", self._save),
+                          ("Meta+Shift+S", self._save)):
+            sc = QShortcut(QKeySequence(key), self)
+            sc.setContext(Qt.ShortcutContext.WindowShortcut)
+            sc.activated.connect(slot)
             self._shortcuts.append(sc)
 
     # --- Video panel ---------------------------------------------------------
@@ -173,10 +208,10 @@ class LayoutMixin:
         # Two sticky SAM tools; Shift inverts whichever one is active for a
         # single click, so "+ with an occasional Shift" and "− permanently"
         # are both one gesture away.
-        self.btn_sam_pos = QPushButton("SAM +")
+        self.btn_sam_pos = QPushButton("+")
         self.btn_sam_pos.setToolTip("Points are the worm.\n"
                                     "Shift+click for a single NOT-the-worm point.")
-        self.btn_sam_neg = QPushButton("SAM −")
+        self.btn_sam_neg = QPushButton("−")
         self.btn_sam_neg.setToolTip("Points are NOT the worm — stays negative "
                                     "until you switch back.\n"
                                     "Shift+click for a single worm point.")
@@ -195,7 +230,6 @@ class LayoutMixin:
         self.brush_slider = QSlider(Qt.Orientation.Horizontal)
         self.brush_slider.setRange(BRUSH_MIN, BRUSH_MAX)
         self.brush_slider.setValue(self.zoomv.brush)
-        self.brush_slider.setFixedWidth(80)
         self.brush_slider.valueChanged.connect(self._set_brush)
         self.brush_val = QLabel(str(self.zoomv.brush))
 
@@ -204,12 +238,6 @@ class LayoutMixin:
         self.outline_btn.setToolTip("Show masks as an outline instead of a "
                                     "filled overlay, so you can see the worm")
         self.outline_btn.toggled.connect(self._toggle_outline)
-        self.onion_btn = QPushButton("Onion")
-        self.onion_btn.setCheckable(True)
-        self.onion_btn.toggled.connect(self._toggle_onion)
-        self.prop_btn = QPushButton("Propagate")
-        self.prop_btn.setToolTip("Copy this worm's mask to the next frame (P)")
-        self.prop_btn.clicked.connect(self._propagate)
 
         self.sam_run_btn = QPushButton("Segment ▶ all")
         self.sam_run_btn.setToolTip("Propagate the point prompts through every "
@@ -233,131 +261,141 @@ class LayoutMixin:
         self.lock_box.setToolTip(
             "Frames you corrected by hand keep your mask: SAM2 still uses them "
             "as prompts to track from, but never writes over them.")
+        self.lock_box.toggled.connect(self._settings_changed)
         self.sam_clear_btn = QPushButton("Clear pts")
         self.sam_clear_btn.setToolTip("Forget the SAM2 point prompts")
         self.sam_clear_btn.clicked.connect(self._sam_clear)
 
-        zoom_lbl = QLabel("Zoom")
-        self.zoom_slider = QSlider(Qt.Orientation.Horizontal)
-        self.zoom_slider.setRange(int(ZOOM_MIN * 10), int(ZOOM_MAX * 10))
-        self.zoom_slider.setValue(int(self.zoomv.zoom * 10))
-        self.zoom_slider.valueChanged.connect(self._set_zoom)
+        # Zoom as a percentage with − / + steps (keys − and + do the same).
+        # 100 % = one image pixel per screen pixel.
+        self.zoom_out_btn = QPushButton("−")
+        self.zoom_out_btn.setToolTip("Zoom out (−)")
+        self.zoom_out_btn.clicked.connect(lambda: self._zoom_step(-1))
+        self.zoom_in_btn = QPushButton("+")
+        self.zoom_in_btn.setToolTip("Zoom in (+)")
+        self.zoom_in_btn.clicked.connect(lambda: self._zoom_step(1))
+        self.zoom_label = QLabel(self._zoom_text())
+        self.zoom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.zoom_label.setMinimumWidth(48)
         self.fit_btn = QPushButton("Fit")
-        self.fit_btn.setFixedWidth(40)
         self.fit_btn.setToolTip("Frame the selected worm (whole frame if none)")
         self.fit_btn.clicked.connect(self._fit_view)
+        self.zoom_full_btn = QPushButton("Zoom out")
+        self.zoom_full_btn.setToolTip("Show the whole frame")
+        self.zoom_full_btn.clicked.connect(self._zoom_out_full)
         self.undo_btn = QPushButton("↶")
         self.undo_btn.setFixedWidth(34)
-        self.undo_btn.setToolTip("Undo (Ctrl+Z)")
+        self.undo_btn.setToolTip("Undo (⌘Z / Ctrl+Z)")
         self.undo_btn.clicked.connect(self._undo_action)
         self.undo_btn.setEnabled(False)
         self.redo_btn = QPushButton("↷")
         self.redo_btn.setFixedWidth(34)
-        self.redo_btn.setToolTip("Redo (Ctrl+Y)")
+        self.redo_btn.setToolTip("Redo (⌘⇧Z / Ctrl+Shift+Z)")
         self.redo_btn.clicked.connect(self._redo_action)
         self.redo_btn.setEnabled(False)
         self.save_btn = QPushButton("Save")
+        self.save_btn.setToolTip("Save (⌘S / Ctrl+S, or ⌘⇧S / Ctrl+Shift+S)")
         self.save_btn.clicked.connect(self._save)
         self.save_btn.setEnabled(False)
-
 
         # Every control is shrunk to CONTROL_H; sliders lose their fixed widths
         # so they can breathe in the narrow column.
         _compact(self.btn_pan, self.btn_draw, self.btn_erase, self.outline_btn,
-                 self.onion_btn, self.prop_btn, self.btn_sam_pos,
-                 self.btn_sam_neg, self.sam_mask_btn, self.sam_clear_btn,
-                 self.sam_run_btn, self.sam_again_btn, self.fit_btn,
-                 self.undo_btn, self.redo_btn, self.save_btn)
+                 self.btn_sam_pos, self.btn_sam_neg, self.sam_mask_btn,
+                 self.sam_clear_btn, self.sam_run_btn, self.sam_again_btn,
+                 self.zoom_out_btn, self.zoom_in_btn, self.fit_btn,
+                 self.zoom_full_btn, self.undo_btn, self.redo_btn, self.save_btn)
+        for b in (self.zoom_out_btn, self.zoom_in_btn):
+            b.setFixedWidth(28)
         self.brush_slider.setMinimumWidth(60)
 
         zbox = QHBoxLayout()                 # controls on the left, image right
         zbox.setContentsMargins(4, 4, 4, 4)
         zbox.setSpacing(ROW_SPACING + 2)
-        zbox.addLayout(self._zoom_controls(brush_lbl, zoom_lbl))
+        zbox.addLayout(self._zoom_controls(brush_lbl))
         zbox.addWidget(self.zoomv, 1)
         self.zoom_group = QGroupBox("Zoom  (edit here)")
         self.zoom_group.setLayout(zbox)
 
-    def _zoom_controls(self, brush_lbl, zoom_lbl):
+    def _tool_box(self, title):
+        """A small outlined box with a title, for one family of tools.
+        Returns (box, grid) — fill the grid, the box goes in the column."""
+        box = QGroupBox(title)
+        box.setObjectName("toolbox")
+        grid = QGridLayout(box)
+        grid.setContentsMargins(4, 4, 4, 4)
+        grid.setHorizontalSpacing(ROW_SPACING)
+        grid.setVerticalSpacing(ROW_SPACING - 1)
+        return box, grid
+
+    def _zoom_controls(self, brush_lbl):
         """The Zoom panel's controls as a narrow column down the left side.
 
-        Stacked in a two-per-row grid so the canvas keeps the entire height —
-        the same buttons in rows under the image cost ~140 px of it. Grouped
-        top to bottom: painting (Draw with Erase beneath it, brush, lock edits),
-        what's drawn, SAM2 prompts, SAM2 tracking, view and history, progress."""
-        col = QGridLayout()
+        Top to bottom: the view tools everybody needs (Pan, Outline), then three
+        small boxes — "Zoom", "AI edits" (SAM2 prompts and tracking) and
+        "Manual edits" (brush and what happens to the frames you painted) —
+        then undo / redo / save and progress. Kept in a column so the canvas gets the height."""
+        col = QVBoxLayout()
         col.setContentsMargins(0, 0, 0, 0)
-        col.setHorizontalSpacing(ROW_SPACING)
-        col.setVerticalSpacing(ROW_SPACING - 1)
-        row = 0
+        col.setSpacing(ROW_SPACING + 2)
 
-        def pair(left, right):
-            nonlocal row
-            col.addWidget(left, row, 0)
-            col.addWidget(right, row, 1)
-            row += 1
+        # --- view: always visible, at the top ---
+        top = _tight(QHBoxLayout())
+        top.addWidget(self.btn_pan, 1)
+        top.addWidget(self.outline_btn, 1)
+        col.addLayout(top)
 
-        def wide(w):
-            nonlocal row
-            col.addWidget(w, row, 0, 1, 2)
-            row += 1
+        # --- Zoom: − % + on one row, Fit and Zoom out beneath ---
+        zbx, g = self._tool_box("Zoom")
+        zrow = _tight(QHBoxLayout())
+        zrow.addWidget(self.zoom_out_btn)
+        zrow.addWidget(self.zoom_label, 1)
+        zrow.addWidget(self.zoom_in_btn)
+        g.addLayout(zrow, 0, 0, 1, 2)
+        g.addWidget(self.fit_btn, 1, 0)
+        g.addWidget(self.zoom_full_btn, 1, 1)
+        col.addWidget(zbx)
 
-        def gap(px=6):
-            nonlocal row
-            col.setRowMinimumHeight(row, px)
-            row += 1
+        # --- AI edits: SAM2 prompts, then tracking ---
+        ai, g = self._tool_box("AI edits")
+        g.addWidget(self.btn_sam_pos, 0, 0)
+        g.addWidget(self.btn_sam_neg, 0, 1)
+        g.addWidget(self.sam_clear_btn, 1, 0, 1, 2)
+        g.addWidget(self.sam_run_btn, 2, 0, 1, 2)
+        again = _tight(QHBoxLayout())        # “back” modifies the button beside it
+        again.addWidget(self.sam_again_btn, 1)
+        again.addWidget(self.back_box)
+        g.addLayout(again, 3, 0, 1, 2)
+        col.addWidget(ai)
 
-        # --- painting tools ---
-        # Erase sits directly under Draw, in the same column: they are the two
-        # halves of one gesture (and Shift swaps them mid-stroke), so the eye
-        # should find them stacked rather than scattered across the grid.
-        pair(self.btn_pan, self.btn_draw)
-        pair(self.outline_btn, self.btn_erase)
+        # --- Manual edits: Draw / Erase side by side, brush beneath ---
+        man, g = self._tool_box("Manual edits")
+        g.addWidget(self.btn_draw, 0, 0)
+        g.addWidget(self.btn_erase, 0, 1)
         brush = _tight(QHBoxLayout())
         brush.addWidget(brush_lbl)
         brush.addWidget(self.brush_slider, 1)
         brush.addWidget(self.brush_val)
-        col.addLayout(brush, row, 0, 1, 2)
-        row += 1
-        wide(self.lock_box)                  # about YOUR edits: keep it here
-        pair(self.onion_btn, self.prop_btn)
-        gap()
+        g.addLayout(brush, 1, 0, 1, 2)
+        g.addWidget(self.sam_mask_btn, 2, 0, 1, 2)
+        g.addWidget(self.lock_box, 3, 0, 1, 2)
+        col.addWidget(man)
 
-        # --- SAM2: prompts, then tracking ---
-        pair(self.btn_sam_pos, self.btn_sam_neg)
-        wide(self.sam_mask_btn)
-        wide(self.sam_run_btn)
-        wide(self.sam_again_btn)
-        pair(self.back_box, self.sam_clear_btn)   # “back” modifies the button
-        gap()                                     # directly above it
-
-        # --- view + history ---
-        zrow = _tight(QHBoxLayout())
-        zrow.addWidget(zoom_lbl)
-        zrow.addWidget(self.zoom_slider, 1)
-        zrow.addWidget(self.fit_btn)
-        col.addLayout(zrow, row, 0, 1, 2)
-        row += 1
+        # --- history ---
         hist = _tight(QHBoxLayout())
         hist.addWidget(self.undo_btn)
         hist.addWidget(self.redo_btn)
         hist.addWidget(self.save_btn, 1)
-        col.addLayout(hist, row, 0, 1, 2)
-        row += 1
-        gap()
+        col.addLayout(hist)
 
-        # --- progress, where the image adjustments used to be ---
+        # --- progress ---
         # It sits in the column rather than floating: a long job then
         # reports right next to the buttons that started it.
-        col.addWidget(self.progress_panel, row, 0, 1, 2)
-        row += 1
-        col.setRowStretch(row, 1)            # keep everything pinned to the top
+        col.addWidget(self.progress_panel)
+        col.addStretch(1)                    # keep everything pinned to the top
 
-        wrap = QVBoxLayout()
-        wrap.setContentsMargins(0, 0, 0, 0)
-        wrap.addLayout(col)
         holder = QWidget()
-        holder.setLayout(wrap)
+        holder.setLayout(col)
 
         # Inside a scroll area so a short window (or a platform with larger
         # fonts than this one) scrolls the column instead of forcing the whole
@@ -383,17 +421,21 @@ class LayoutMixin:
         for w in self.worms:
             self.list.addItem(f"#{w.obj_id}")
         self.list.currentRowChanged.connect(self._on_list_row)
-        self.open_btn = QPushButton("Open video…")
-        self.open_btn.setToolTip("Load another video folder (one containing "
-                                 "frames/ and binary/)")
-        self.open_btn.clicked.connect(self._open_folder)
-        self.import_btn = QPushButton("Import raw frames…")
-        self.import_btn.setToolTip("Start from a folder of raw images and "
-                                   "segment them with SAM2 point prompts")
+        # Two ways in: start a new video from raw frames, or carry on editing
+        # one that was saved before. "New" comes first — it is how every
+        # video starts.
+        self.import_btn = QPushButton("Upload video or image…")
+        self.import_btn.setToolTip("A folder of raw frames opens as a video, a "
+                                   "single .png / .jpg / .tif as a photo; segment "
+                                   "them with SAM2 point prompts")
         self.import_btn.clicked.connect(self._import_raw)
+        self.open_btn = QPushButton("Continue editing video…")
+        self.open_btn.setToolTip("Open a video you worked on before (a folder "
+                                 "containing frames/ and binary/)")
+        self.open_btn.clicked.connect(self._open_folder)
 
         self.add_btn = QPushButton("Add")
-        self.add_btn.setToolTip("New empty worm, then click it with SAM + (N)")
+        self.add_btn.setToolTip("New empty worm, then click it with + (AI edits) (N)")
         self.add_btn.clicked.connect(self._add_worm)
         self.del_btn = QPushButton("Delete")
         self.del_btn.setToolTip("Delete the selected worm (all frames)")
@@ -416,8 +458,8 @@ class LayoutMixin:
         self.info.setWordWrap(True)
         self.info.setAlignment(Qt.AlignmentFlag.AlignTop)
         lbox = QVBoxLayout()
-        lbox.addWidget(self.open_btn)
         lbox.addWidget(self.import_btn)
+        lbox.addWidget(self.open_btn)
         lbox.addWidget(self.list, 1)
         lbox.addLayout(wbtns)
         lbox.addWidget(self.info)
@@ -442,7 +484,8 @@ class LayoutMixin:
                                    f"(window {SMOOTH_WINDOW}) — display only")
         self.smooth_box.toggled.connect(self._toggle_smooth)
         self.units_btn = QPushButton("Units…")
-        self.units_btn.setToolTip("Calibrate µm/pixel and fps to show metrics "
+        self.units_btn.setToolTip("Calibrate: draw a line on a scale image to "
+                                  "set µm/pixel, and set fps, to show metrics "
                                   "in physical units")
         self.units_btn.clicked.connect(self._set_units)
         self.refresh_btn = QPushButton("Refresh")

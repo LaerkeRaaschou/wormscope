@@ -31,6 +31,20 @@ def recompute_worm(worm, masks, area_metric, length_metric, frames=None):
     refresh_kinematics(worm)
 
 
+# Lengths the scale tool accepts, in µm. Everything is stored as µm per pixel.
+UNIT_TO_UM = {"nm": 1e-3, "µm": 1.0, "mm": 1e3}
+
+
+def um_per_px(line_px, known_length, unit="µm"):
+    """Calibration from a line drawn on a scale bar: µm per pixel, or None.
+
+    `line_px` is the drawn line's length in pixels, `known_length` the real
+    length it spans, in `unit` (a key of UNIT_TO_UM)."""
+    if not line_px or not known_length or line_px <= 0 or known_length <= 0:
+        return None
+    return known_length * UNIT_TO_UM[unit] / line_px
+
+
 def unit_scales(area_metric, length_metric, px_to_um=None, fps=None):
     """metric name -> (factor, label). Empty (i.e. pixels) until calibrated."""
     if not px_to_um:

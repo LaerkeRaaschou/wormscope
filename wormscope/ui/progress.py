@@ -35,7 +35,7 @@ class ProgressPanel(QFrame):
                            QSizePolicy.Policy.Fixed)
         self._cancelled = False
 
-        # Two lines only: the column is 196 px wide and every pixel it takes
+        # Two lines only: the column is 236 px wide and every pixel it takes
         # comes off the canvas next to it.
         self._title = ""
         self._detail = ""

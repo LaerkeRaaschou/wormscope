@@ -67,6 +67,25 @@ class WormListMixin:
             self._set_mode(ZoomView.MODE_DRAW)
             self.info.setText(f"Worm #{new_id}\nDraw its mask on this frame.")
 
+    def _rename_sam_state(self, old, new):
+        """Move a worm's corrected / prompted frames to its new ID.
+
+        SAM2 keeps its prompts per ID, and the old ID's session can't be
+        renamed, so it is dropped: every frame that was prompted or painted
+        becomes a hand edit of the new ID. The next run re-sends those masks
+        as prompts, and “lock edits” keeps protecting them."""
+        moved = {(new, i) for (o, i) in self._hand_edited | self._anchored
+                 if o == old}
+        self._hand_edited = {k for k in self._hand_edited if k[0] != old} | moved
+        self._anchored = {k for k in self._anchored if k[0] != old}
+        self._sam_points = {k: v for k, v in self._sam_points.items()
+                            if k[0] != old}
+        if old in self._prompted_worms:
+            self._prompted_worms.discard(old)
+            self._prompted_worms.add(new)
+        if self.sam is not None:
+            self.sam.forget(old)
+
     def _delete_worm(self):
         w = self.selected
         if w is None:
@@ -120,6 +139,7 @@ class WormListMixin:
 
     def _do_reassign(self, w, old, new):
         old_files = self.masks.rename_worm(old, new)
+        self._rename_sam_state(old, new)
         # old-named files on disk are now garbage; but we're about to (re)write
         # files under `new`, so cancel any pending deletion of that name.
         self._pending_delete = {p for p in self._pending_delete

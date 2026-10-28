@@ -59,6 +59,17 @@ class ZoomView(QWidget):
         self.update()
         self.viewportChanged.emit()
 
+    def pan_by(self, fx, fy):
+        """Move the view by a fraction of its own width / height (the pan
+        keys): 0.15 moves the picture 15 % of the view to the left."""
+        if self._img is None or self.cx is None:
+            return
+        self.cx += fx * self.width() / self.zoom
+        self.cy += fy * self.height() / self.zoom
+        self._clamp()
+        self.update()
+        self.viewportChanged.emit()
+
     def frame_bbox(self, bbox, margin=1.7):
         """Zoom/centre so the worm's bbox comfortably fills the view."""
         x0, y0, x1, y1 = bbox

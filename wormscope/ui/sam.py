@@ -15,11 +15,12 @@ to change them later without the GUI. The backend itself is swappable — see
 from pathlib import Path
 
 import numpy as np
-from PyQt6.QtWidgets import QFileDialog, QMessageBox
+from PyQt6.QtWidgets import QMessageBox
 
 from .. import segmentation, settings
 from ..core.models import Worm
 from ..segmentation import hydra_config_name, pair_warning, sam2_config_dir
+from .file_dialogs import pick_file
 from .sam_worker import SamWorker
 
 
@@ -44,14 +45,14 @@ class SamMixin:
         pkg_cfg = sam2_config_dir()
         start_cfg = str(Path(cfg).parent) if cfg else \
             (str(pkg_cfg) if pkg_cfg else str(Path.home()))
-        new_cfg, _f = QFileDialog.getOpenFileName(
+        new_cfg = pick_file(
             self, "Select the SAM2 config (.yaml, usually inside the sam2 "
                   "package's configs/ folder)", start_cfg,
             "SAM2 config (*.yaml *.yml);;All files (*)")
         if not new_cfg:
             return False
         start_ckpt = str(Path(ckpt).parent) if ckpt else str(Path(new_cfg).parent)
-        new_ckpt, _f = QFileDialog.getOpenFileName(
+        new_ckpt = pick_file(
             self, "Select the SAM2 checkpoint", start_ckpt,
             "SAM2 checkpoint (*.pt *.pth);;All files (*)")
         if not new_ckpt:
@@ -124,7 +125,7 @@ class SamMixin:
             if explain:
                 QMessageBox.warning(
                     self, "SAM2",
-                    "SAM2 needs the frames on disk. Use “Import raw frames…” to "
+                    "SAM2 needs the frames on disk. Use “Upload video or image…” to "
                     "start from a folder of images.")
             return False
         # No path check here on purpose: another backend may need no files at

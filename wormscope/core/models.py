@@ -249,6 +249,7 @@ class Dataset:
     csv_path: Path | None
     title: str
     frames_dir: Path | None = None   # on-disk frames folder (for SAM2), if any
+    session: dict = field(default_factory=dict)   # wormscope.json, if saved before
 
     @property
     def is_empty(self) -> bool:

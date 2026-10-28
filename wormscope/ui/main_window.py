@@ -33,7 +33,7 @@ from .rendering import RenderMixin
 from .sam import SamMixin
 from .worms import WormListMixin
 
-# Keep references so windows opened from "Open video…" aren't garbage-collected.
+# Keep references so windows opened from "Continue editing video…" aren't garbage-collected.
 WINDOWS: list = []
 
 
@@ -62,10 +62,10 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
         self._base_title = ds.title
         self._fitted = False
         self.by_id = {w.obj_id: w for w in self.worms}
-        self.onion = False
         self.outline_only = False            # show masks as outlines, not filled
         self.px_to_um = None                 # calibration: µm per pixel
         self.fps = None                      # calibration: frames per second
+        self._calibration = {}               # scale image, line, known length (Units…)
         self._data_dir = ds.csv_path.parent if ds.csv_path else None
         self._frames_dir = ds.frames_dir     # on-disk frames for SAM2
         self.sam = None                      # SamWorker: SAM2 on its own thread
@@ -83,12 +83,13 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
         self._stroke_before = None           # mask snapshot at stroke start
         self._stroke_key = None
         self._pending_delete: set = set()    # files to unlink on Save
+        self._settings_dirty = False         # calibration / lock changed since Save
 
         self.area_metric = find_col(ds.metric_names, ["area_px", "area"]) or "area_px"
         self.length_metric = find_col(ds.metric_names, ["length_px", "length"]) or "length_px"
 
         # 4 plot slots: mask metrics (area, length) + kinematics (speed, accel)
-        self.plot_metrics = list(ds.metric_names[:2])
+        self.plot_metrics = [self.area_metric, self.length_metric]
         for p in KINEMATIC_METRICS:
             if len(self.plot_metrics) < MAX_PLOTS and p not in self.plot_metrics:
                 self.plot_metrics.append(p)
@@ -98,6 +99,7 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
     def _finish_setup(self):
         self.list.setCurrentRow(-1)          # cleared; _start_with_worm picks one
         self.plot.set_worm(None)
+        self._apply_session(self.ds.session)  # settings saved with this video
         self._update_title()
         if self.n:
             self.set_frame(0)
@@ -126,22 +128,25 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
 
     def _show_empty_state(self):
         """No video loaded: grey out everything that needs frames and say how
-        to get one. Only “Open video…” and “Import raw frames…” stay live."""
+        to get one. Only the two upload buttons stay live."""
         for w in (self.prev_btn, self.next_btn, self.play_btn, self.slider,
                   self.export_btn, self.add_btn,
                   self.del_btn, self.id_btn, self.btn_pan, self.btn_draw,
                   self.btn_erase, self.btn_sam_pos, self.btn_sam_neg,
-                  self.outline_btn, self.onion_btn, self.prop_btn,
-                  self.brush_slider, self.zoom_slider, self.fit_btn,
+                  self.outline_btn, self.brush_slider, self.zoom_in_btn,
+                  self.zoom_full_btn,
+                  self.zoom_out_btn, self.fit_btn,
                   self.sam_run_btn, self.sam_again_btn, self.sam_mask_btn,
                   self.sam_clear_btn, self.back_box, self.lock_box,
                   self.refresh_btn,
                   self.units_btn, self.smooth_box, self.list):
             w.setEnabled(False)
         self.frame_label.setText("no frames")
-        self.info.setText("No video loaded.\n\nOpen a folder that contains "
-                          "frames/ (and usually binary/), or import a folder "
-                          "of raw frames to segment from scratch.")
+        self.info.setText("No video loaded.\n\n“Upload video or image…” "
+                          "starts from a folder of raw frames or a single "
+                          "image; “Continue "
+                          "editing video…” opens one you saved before "
+                          "(frames/ and usually binary/).")
 
     # --- frame / selection ---------------------------------------------------
     def set_frame(self, f):
@@ -236,7 +241,7 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
         self.info.setText("\n".join(lines))
 
     def _update_title(self):
-        self.setWindowTitle(self._base_title + (" *" if self.masks.dirty else ""))
+        self.setWindowTitle(self._base_title + (" *" if self._has_unsaved() else ""))
 
     # --- playback / keys -----------------------------------------------------
     def _step(self, delta):
@@ -269,21 +274,15 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
         self.set_frame(self.frame + 1)
 
     def keyPressEvent(self, e):
-        ctrl = e.modifiers() & Qt.KeyboardModifier.ControlModifier
         shift = e.modifiers() & Qt.KeyboardModifier.ShiftModifier
         key = e.key()
-        if ctrl and key == Qt.Key.Key_Z and not shift:
-            self._undo_action()
-        elif ctrl and (key == Qt.Key.Key_Y or (key == Qt.Key.Key_Z and shift)):
-            self._redo_action()
-        elif ctrl and key == Qt.Key.Key_S:
-            self._save()
-        elif key == Qt.Key.Key_P:
-            self._propagate()
-        elif key == Qt.Key.Key_N and self.add_btn.isEnabled():
-            self._add_worm()                 # N: new worm, armed with SAM +
-        elif key == Qt.Key.Key_O:
-            self.onion_btn.toggle()
+        # Undo / redo / save are window-wide shortcuts (LayoutMixin._build_shortcuts).
+        if key == Qt.Key.Key_N and self.add_btn.isEnabled():
+            self._add_worm()                 # N: new worm, armed with the + tool
+        elif key in (Qt.Key.Key_Plus, Qt.Key.Key_Equal):
+            self._zoom_step(1)               # keypad + (the shortcut covers the rest)
+        elif key == Qt.Key.Key_Minus:
+            self._zoom_step(-1)
         elif key == Qt.Key.Key_Space:
             self._toggle_play()
         elif key == Qt.Key.Key_Left:
@@ -304,6 +303,12 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
             self._fitted = True
 
     def closeEvent(self, e):
+        """Closing the window (or quitting) with unsaved edits asks first:
+        Save, Don't Save or Cancel."""
+        if not getattr(self, "_closing_confirmed", False):
+            if not self._confirm_discard("close wormscope"):
+                e.ignore()                   # Cancel: keep the window open
+                return
         self._shutdown_sam()                 # stop the worker thread cleanly
         super().closeEvent(e)
 

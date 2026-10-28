@@ -7,6 +7,10 @@ Expected layout of a per-video folder::
         binary/              # worm{id:02d}_{stem}.png -> per-worm masks (EDITABLE)
         skel/                # worm{id:02d}_{stem}.png -> skeletons (recomputed)
         measurements.csv     # per-frame metrics -> Plots panel (rewritten on Save)
+        wormscope.json       # calibration, lock edits, corrected frames (optional)
+
+This is exactly what Save writes (see :mod:`wormscope.io.session`), so any
+folder wormscope saved can be opened again with “Continue editing video…”.
 
 Frame alignment is keyed on the trailing integer in each filename, so original
 frames, binary masks and CSV rows line up even if their name prefixes differ.
@@ -18,11 +22,27 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from ..config import MAX_PLOTS, WORM_RE
+from ..config import MAX_PLOTS, PHOTO_EXTS, WORM_RE
 from ..core.geometry import mask_stats
 from ..core.models import Dataset, FrameSource, MaskStore, Worm
 from ..core.utils import (find_col, last_int, list_images, sort_by_frame_number,
                           to_num)
+from .session import SESSION_FILE, ensure_frames_in, read_session
+
+
+def load_image_rgb(path) -> np.ndarray:
+    """Any image file -> uint8 RGB array.
+
+    16-bit and float images (common for microscope TIFFs) are stretched
+    between their 0.5 and 99.5 percentiles; a plain convert("RGB") would clip
+    them to white."""
+    img = Image.open(path)
+    if img.mode in ("I", "I;16", "I;16B", "I;16L", "I;16N", "F"):
+        arr = np.asarray(img, dtype=np.float64)
+        lo, hi = np.percentile(arr, (0.5, 99.5))
+        arr = np.clip((arr - lo) / max(hi - lo, 1e-9), 0, 1) * 255
+        return np.stack([arr.astype(np.uint8)] * 3, axis=-1)
+    return np.asarray(img.convert("RGB"))
 
 
 def find_frames_dir(data_dir: Path):
@@ -52,9 +72,10 @@ def load_frames(data_dir: Path):
     for idx, p in enumerate(files):
         idx_to_stem[idx] = p.stem + ".png"
         k = last_int(p.name)
-        if k is not None:
-            key_to_idx.setdefault(k, idx)
-    src = FrameSource(files, lambda p: np.asarray(Image.open(p).convert("RGB")))
+        # Same rule as build_raw_dataset, so a folder saved from raw frames
+        # without numbers in their names lines up again when reopened.
+        key_to_idx.setdefault(k if k is not None else idx, idx)
+    src = FrameSource(files, load_image_rgb)   # also 16-bit TIFFs
     print(f"[frames] {folder.name}/: {len(files)} frames")
     return src, key_to_idx, idx_to_stem, len(files)
 
@@ -63,6 +84,9 @@ def load_tracks_from_masks(data_dir: Path, key_to_idx, masks: MaskStore):
     """Parse binary/worm{id:02d}_{stem}.png, register mask paths, derive
     centroid + bbox per worm/frame."""
     mask_dir = data_dir / "binary"
+    # A mask written by Save is named exactly after its frame, so match on the
+    # name first; the trailing number is the fallback for pipeline outputs.
+    stem_to_idx = {stem: idx for idx, stem in masks.idx_to_stem.items()}
     cents: dict[int, dict] = {}
     boxes: dict[int, dict] = {}
     n_masks = 0
@@ -71,10 +95,10 @@ def load_tracks_from_masks(data_dir: Path, key_to_idx, masks: MaskStore):
         if not mw:
             continue
         wid = int(mw.group(1))
-        fk = last_int(p.name[mw.end():])
-        if fk is None:
-            continue
-        idx = key_to_idx.get(fk)
+        idx = stem_to_idx.get(p.name[mw.end():].lstrip("_-"))
+        if idx is None:
+            fk = last_int(p.name[mw.end():])
+            idx = key_to_idx.get(fk) if fk is not None else None
         if idx is None:
             continue
         masks.register(wid, idx, path=p)
@@ -92,8 +116,29 @@ def load_tracks_from_masks(data_dir: Path, key_to_idx, masks: MaskStore):
     return worms
 
 
+# Columns wormscope itself derives when it writes measurements.csv: speed and
+# acceleration are recomputed from the centroids on load, and the µm columns
+# from the pixel ones and the calibration. Reading them back would only add
+# stale duplicates (and push length out of the plots).
+DERIVED_COLUMNS = {
+    "speed_px_per_frame", "accel_px_per_frame2",
+    "area_um2", "length_um",
+    "speed_um_per_s", "accel_um_per_s2",
+    "speed_um_per_frame", "accel_um_per_frame2",
+}
+# Shown first, in this order: they fill the area and length plot slots.
+PREFERRED_METRICS = ["area_px", "length_px"]
+
+
+def order_metrics(names):
+    """area_px, length_px first (when present), then the rest alphabetically."""
+    first = [m for m in PREFERRED_METRICS if m in names]
+    return first + sorted(m for m in names if m not in first)
+
+
 def load_metrics(data_dir: Path, worms, key_to_idx, n_frames):
-    """Fill worm.metrics from measurements.csv. Returns the metric names found."""
+    """Fill worm.metrics from measurements.csv. Returns the metric names found,
+    area and length first."""
     csv_path = data_dir / "measurements.csv"
     if not csv_path.is_file():
         print("[metrics] no measurements.csv")
@@ -106,6 +151,7 @@ def load_metrics(data_dir: Path, worms, key_to_idx, n_frames):
     frame_col = find_col(cols, ["frame", "index", "t"])
     id_col = find_col(cols, ["worm", "obj_id", "track", "label", "id"])
     metric_cols = [c for c in cols if c not in (frame_col, id_col)
+                   and c not in DERIVED_COLUMNS
                    and sum(to_num(r.get(c)) is not None for r in rows[:50]) > len(rows[:50]) * 0.8]
     by_id = {w.obj_id: w for w in worms}
     single = worms[0] if len(worms) == 1 else None
@@ -128,7 +174,7 @@ def load_metrics(data_dir: Path, worms, key_to_idx, n_frames):
             v = to_num(r.get(c))
             if v is not None:
                 w.metrics.setdefault(c, {})[idx] = v
-    names = sorted({m for w in worms for m in w.metrics})
+    names = order_metrics({m for w in worms for m in w.metrics})
     print(f"[metrics] frame='{frame_col}' id='{id_col}' metrics={names}")
     return names
 
@@ -162,29 +208,89 @@ def load_dataset(data_dir: Path) -> Dataset | None:
     idx_to_key = {idx: k for k, idx in key_to_idx.items()}
     return Dataset(frames, worms, names[:MAX_PLOTS], masks, idx_to_key,
                    data_dir / "measurements.csv", f"wormscope — {data_dir.name}",
-                   frames_dir=find_frames_dir(data_dir))
+                   frames_dir=find_frames_dir(data_dir),
+                   session=read_session(data_dir))
+
+
+def has_saved_work(folder: Path) -> bool:
+    """True when `folder` holds a saved session (masks, measurements or
+    settings) — something a fresh upload must not overwrite."""
+    folder = Path(folder)
+    binary = folder / "binary"
+    return ((binary.is_dir() and any(binary.iterdir()))
+            or (folder / "measurements.csv").is_file()
+            or (folder / SESSION_FILE).is_file())
+
+
+def is_photo(path: Path) -> bool:
+    """A single image file wormscope can open on its own (.png .jpg .jpeg .tif)."""
+    path = Path(path)
+    return path.is_file() and path.suffix.lower() in PHOTO_EXTS
+
+
+def raw_output_dir(frames_dir: Path, files=None) -> Path:
+    """Where a fresh upload of raw frames is saved: a sibling
+    '<name>_wormscope' folder — or '<name>_wormscope_2', '_3', … when that one
+    is taken, so an upload never overwrites earlier annotations. (Open those
+    with “Continue editing video…”.)
+
+    Taken means: it holds saved work, or its frames/ holds images that are
+    not this upload's `files` (e.g. worm.png and worm.jpg, which would
+    otherwise share 'worm_wormscope' and reopen as a two-frame video). A
+    folder with only this upload's frames from an unsaved session is reused."""
+    name = frames_dir.stem if is_photo(frames_dir) else frames_dir.name
+    base = frames_dir.parent / f"{name}_wormscope"
+    ours = {Path(p).name for p in files} if files is not None else None
+
+    def taken(folder):
+        if has_saved_work(folder):
+            return True
+        if ours is None:
+            return False
+        return any(p.name not in ours for p in list_images(folder / "frames"))
+
+    candidate, n = base, 2
+    while taken(candidate):
+        candidate = base.with_name(f"{base.name}_{n}")
+        n += 1
+    return candidate
 
 
 def build_raw_dataset(frames_dir: Path) -> Dataset | None:
-    """Start a fresh working dataset from a folder of RAW frames (no masks yet).
-    Outputs (binary/, skel/, measurements.csv) go in a sibling '<name>_wormscope'
-    folder so the raw frames are never modified. Worms start empty; use the SAM2
-    point tools (or Add + brush) to create them."""
-    files = sort_by_frame_number(list_images(frames_dir))
+    """Start a fresh working dataset from a folder of RAW frames (no masks yet),
+    or from a single image: a photo is simply a video of one frame, so
+    segmenting, editing, metrics and Save all work the same way.
+
+    Everything goes in a sibling '<name>_wormscope' folder (see
+    raw_output_dir), and the frames are put in its frames/ straight away —
+    hard-linked when on the same disk, copied otherwise — so the raw folder is
+    never modified and the _wormscope folder alone is the whole video: it opens
+    with “Continue editing video…” from the start. Worms start empty; use the
+    SAM2 point tools (or Add + brush) to create them."""
+    frames_dir = Path(frames_dir)
+    if is_photo(frames_dir):
+        files = [frames_dir]                 # a photo: one frame
+    else:
+        files = sort_by_frame_number(list_images(frames_dir))
     if not files:
         return None
+    out_dir = raw_output_dir(frames_dir, files)
+    added = ensure_frames_in(out_dir, frames_dir)
+    local = out_dir / "frames"
+    files = [local / p.name for p in files]  # this upload's frames, from out_dir
     key_to_idx, idx_to_stem = {}, {}
     for idx, p in enumerate(files):
         idx_to_stem[idx] = p.stem + ".png"
         k = last_int(p.name)
         key_to_idx.setdefault(k if k is not None else idx, idx)
-    src = FrameSource(files, lambda p: np.asarray(Image.open(p).convert("RGB")))
+    src = FrameSource(files, load_image_rgb)   # also 16-bit TIFFs
     shape = src.get(0).shape[:2]
-    out_dir = frames_dir.parent / f"{frames_dir.name}_wormscope"
     masks = MaskStore(shape, binary_dir=out_dir / "binary",
                       skel_dir=out_dir / "skel", idx_to_stem=idx_to_stem)
     idx_to_key = {idx: k for k, idx in key_to_idx.items()}
-    print(f"[import] {len(files)} raw frames from {frames_dir} -> outputs in {out_dir}")
+    kind = "photo" if len(files) == 1 and is_photo(frames_dir) else "raw frames"
+    print(f"[import] {len(files)} {kind} from {frames_dir} -> {out_dir} "
+          f"({added} put in frames/)")
     return Dataset(src, [], ["area_px", "length_px"], masks, idx_to_key,
-                   out_dir / "measurements.csv", f"wormscope — {frames_dir.name}",
-                   frames_dir=frames_dir)
+                   out_dir / "measurements.csv", f"wormscope — {out_dir.name}",
+                   frames_dir=local)

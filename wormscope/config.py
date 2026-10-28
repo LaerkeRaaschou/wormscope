@@ -22,23 +22,25 @@ MASK_UNSEL_RGB = (120, 165, 215)     # unselected worms
 MASK_SEL_RGB = (26, 58, 120)         # selected worm
 MASK_ALPHA = 0.5                     # overlay opacity
 SKEL_RGB = (230, 60, 60)             # selected worm's skeleton
-ONION_RGB = (240, 150, 60)           # onion-skin: previous frame's mask
-ONION_ALPHA = 0.35                   # onion-skin opacity
 
 PANEL_BG_RGB = (214, 224, 236)       # letterbox behind the image
 VIEWPORT_RGB = (255, 210, 90)        # zoom-region rectangle drawn on the video
+SCALE_LINE_RGB = (255, 210, 90)      # the line drawn on a scale bar (Units…)
 
 # --------------------------------------------------------------------------- #
 # Behaviour
 # --------------------------------------------------------------------------- #
 PLAYBACK_FPS = 10          # display speed for playback (not the acquisition FPS)
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
+PHOTO_EXTS = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}  # a single image to upload
 MAX_PLOTS = 4
 SPEED_METRIC = "speed"                 # centroid speed, px/frame
 ACCEL_METRIC = "acceleration"          # change of speed, px/frame^2
 KINEMATIC_METRICS = [SPEED_METRIC, ACCEL_METRIC]
 SMOOTH_WINDOW = 5                      # moving-average window for Smooth toggle
 ZOOM_MIN, ZOOM_MAX = 0.1, 40.0
+ZOOM_STEP = 1.25                     # one − / + zoom step (buttons and keys)
+PAN_STEP = 0.15                      # one pan-key step, as a fraction of the view
 UNDO_LIMIT = 100                       # how many actions the undo stack keeps
 HIT_RADIUS = 45                        # px: centroid fallback when clicking a worm
 BRUSH_MIN, BRUSH_MAX, BRUSH_DEFAULT = 2, 40, 8

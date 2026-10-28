@@ -1,5 +1,5 @@
 """Everything the main window draws: the composited overlay, the selected
-skeleton, onion-skin and the SAM2 point markers.
+skeleton and the SAM2 point markers.
 
 The pixel work itself lives in :mod:`wormscope.render`; this mixin only decides
 *what* to composite for the current state.
@@ -7,8 +7,8 @@ The pixel work itself lives in :mod:`wormscope.render`; this mixin only decides
 
 import numpy as np
 
-from ..config import ONION_ALPHA, ONION_RGB, SKEL_RGB
-from ..render import blend, blend_all_masks, stamp_marker, thicken
+from ..config import SKEL_RGB
+from ..render import blend_all_masks, stamp_marker, thicken
 from ..widgets import np_to_qimage
 
 
@@ -17,7 +17,7 @@ class RenderMixin:
     # --- compositing ---------------------------------------------------------
     def _render_overlay(self, with_extras=True):
         """Composite the original frame with every worm's mask. The Video gets
-        masks only; the Zoom additionally gets onion-skin, the skeleton and the
+        masks only; the Zoom additionally gets the skeleton and the
         SAM2 markers. Blends only within each worm's bbox."""
         if not self.n:                       # no video loaded: nothing to draw
             return
@@ -32,15 +32,6 @@ class RenderMixin:
         zoom_arr, owned = base, False    # the zoom shares the video's pixels
 
         extras = with_extras and self.selected is not None and not self.timer.isActive()
-        if extras and self.onion and self.frame > 0:     # previous frame's mask
-            pm = self.masks.get(self.selected.obj_id, self.frame - 1)
-            if pm.any():
-                ys, xs = np.nonzero(pm)
-                if not owned:
-                    zoom_arr, owned = base.copy(), True
-                blend(zoom_arr, pm,
-                      (xs.min(), ys.min(), xs.max() + 1, ys.max() + 1),
-                      ONION_RGB, ONION_ALPHA)
         if extras and self._sel_skel is not None and self._sel_skel.any():
             if not owned:
                 zoom_arr, owned = base.copy(), True
@@ -65,10 +56,6 @@ class RenderMixin:
         self._sel_skel = self.masks.skel(self.selected.obj_id, self.frame)
 
     # --- overlay toggles / framing -------------------------------------------
-    def _toggle_onion(self, on):
-        self.onion = on
-        self._render_overlay()
-
     def _toggle_outline(self, on):
         self.outline_only = bool(on)
         self._render_overlay()

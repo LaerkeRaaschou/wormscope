@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import QApplication
 
 from .core.geometry import HAVE_SKIMAGE
 from .core.models import empty_dataset
-from .io.loaders import build_raw_dataset, load_dataset
+from .io.loaders import build_raw_dataset, is_photo, load_dataset
 from .theme import apply_theme
 from .ui import WINDOWS, MainWindow
 
@@ -16,13 +16,15 @@ from .ui import WINDOWS, MainWindow
 def resolve_dataset(path=None):
     """ Find data_dir from argument, or open empty """
     if path is None:
-        print("[start] no folder given — open one with “Open video…” or "
-              "“Import raw frames…”")
+        print("[start] no folder given — open one with “Upload video or image…” "
+              "or “Continue editing video…”")
         return empty_dataset()
 
     path = Path(path).expanduser()
+    if is_photo(path):                       # a single image: a one-frame video
+        return build_raw_dataset(path) or empty_dataset()
     if not path.is_dir():
-        print(f"[warn] {path} is not a folder; starting empty")
+        print(f"[warn] {path} is not a folder or an image; starting empty")
         return empty_dataset()
 
     ds = load_dataset(path) or build_raw_dataset(path)

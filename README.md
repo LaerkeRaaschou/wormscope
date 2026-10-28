@@ -9,10 +9,11 @@ point prompts, and write the corrections back to `binary/`, `skel/` and
 python main.py                       # empty window — open a folder from the GUI
 python main.py path/to/video_folder  # a folder containing frames/ (and binary/)
 python main.py path/to/raw_frames    # a plain folder of images -> segment with SAM2
+python main.py path/to/photo.tif     # a single image (.png .jpg .jpeg .tif) -> a photo
 ```
 
 **Either the folder you name, or nothing at all.** A plain start opens an empty
-window with only **Open video…** and **Import raw frames…** live — no demo data,
+window with only **Upload video or image…** and **Continue editing video…** live — no demo data,
 no default folder.
 
 Deps: `pip install PyQt6 matplotlib pillow numpy scikit-image`
@@ -23,11 +24,11 @@ Optional: `imageio` + `imageio-ffmpeg` (overlay video export), `sam2` + `torch`
 
 Typical pass over a clip:
 
-1. Select a worm, or press **Add** — a new worm starts with **SAM +** already
+1. Select a worm, or press **Add** — a new worm starts with **+** (AI edits) already
    selected (`NEW_WORM_TOOL` in `config.py`; it falls back to the brush when the
    frames aren't on disk, since SAM2 needs them). Click on the worm.
    **Shift+click** places the opposite sign for that one click, so a stray
-   negative point costs no trip to the toolbar. **SAM −** switches the default
+   negative point costs no trip to the toolbar. **−** switches the default
    the other way round permanently — every plain click is then negative, and
    Shift gives you a positive one.
 2. **Segment ▶ all** tracks every prompted worm through the whole clip, one
@@ -166,6 +167,22 @@ falls back to the next source instead of failing. `sam2_device` in the settings
 file (or `SAM2_DEVICE`) forces `cuda` / `mps` / `cpu`; empty means auto-detect.
 Point `WORMSCOPE_SETTINGS` at another file to keep per-project settings.
 
+## Calibrating units
+
+**Units…** (Plots panel) opens the calibration dialog. Load an image of a
+scale (a stage micrometer, or any image with a scale bar, including 16-bit
+TIFFs), or use the current frame. Drag a line along a stretch of known length
+and enter that length in nm, µm or mm. µm per pixel = known length ÷ line
+length, and you can also type it directly. Drag an end to adjust it, and hold
+Shift to keep the line horizontal or vertical. Set frames per second in the
+same dialog. **Use pixels** clears the calibration.
+
+Measurements are always stored in pixels. The factor is applied only when
+showing the plots and Info, and when writing the µm columns on Save, so
+recalibrating never changes the data. The scale image must have the same pixel
+size as the video. The dialog warns when its dimensions differ. Reopening the
+dialog keeps the image, the line and the known length.
+
 ## Reading the plots
 
 Four stacked curves for the selected worm: **area**, **length**, **speed** and
@@ -192,6 +209,8 @@ the raw measured values.
 
 ## Expected data layout
 
+What Save writes is exactly what “Continue editing video…” opens:
+
 ```
 data/<video>/
     frames/            ORIGINAL frames        -> shown underneath the masks
@@ -199,7 +218,23 @@ data/<video>/
     skel/              worm{id:02d}_{stem}.png -> skeletons (recomputed on save)
     measurements.csv   per-frame metrics       -> Plots panel (rewritten on Save)
     measurements_plot.png
+    wormscope.json     calibration, lock edits, frames you corrected (optional)
 ```
+
+“Upload video or image…” takes a folder of frames (a video) or a single
+`.png`, `.jpg`/`.jpeg` or `.tif`/`.tiff` (a photo — a video of one frame, so
+everything works the same; it is saved in `<image name>_wormscope/`). In the
+picker, choose an image and press Open, or click a folder and press “Open
+folder as video”.
+
+A video upload creates a sibling `<frames folder>_wormscope/` and
+puts the frames in its `frames/` straight away (hard-linked when on the same
+disk, so no extra space; copied otherwise). That folder alone is the whole
+video from the start: open it with “Continue editing video…” to carry on.
+Uploading the same raw frames again always starts fresh. If
+`<name>_wormscope/` already holds saved work, the new session goes in
+`<name>_wormscope_2/` (then `_3`, …), so earlier annotations are never
+overwritten.
 
 Frame alignment keys on the trailing integer in each filename, so frames, masks
 and CSV rows line up even when their name prefixes differ. If a folder you point
@@ -228,6 +263,7 @@ wormscope/
 │   ├── loaders.py         load_dataset / build_raw_dataset and their helpers
 │   ├── demo.py            make_demo — synthetic dataset used by the tests
 │   ├── writers.py         measurements.csv + measurements_plot.png
+│   ├── session.py         wormscope.json + putting the frames in the saved folder
 │   └── export.py          corrected-overlay .mp4 (PNG fallback)
 ├── segmentation/          swappable segmentation backends
 │   ├── __init__.py        SEGMENTER_FACTORY / make_segmenter
@@ -238,6 +274,8 @@ wormscope/
 │   ├── zoom_view.py       ZoomView    — zoom/pan/paint canvas (emits signals only)
 │   ├── plot_panel.py      PlotPanel   — stacked metric plots, scrubbable,
 │   │                                    area/length ÷ median with a hover read-out
+│   ├── image_canvas.py    ImageCanvas — zoom/pan/fit base for tool canvases
+│   ├── scale_view.py      ScaleView   — draw a line on a scale bar (calibration)
 │   ├── imaging.py         numpy -> QImage
 │   └── colors.py          QColors for hand-painted bits (letterbox, viewport box)
 └── ui/                    the main window, one mixin per area
@@ -250,7 +288,8 @@ wormscope/
     ├── sam_worker.py       SAM2 on a worker thread: job queue + signals
     ├── worms.py           add / delete / reassign worm IDs
     ├── sam.py             SAM2 point prompts and propagation
-    └── io_actions.py      open, import, units, save, export
+    ├── io_actions.py      open, import, units, save, export
+    └── calibration_dialog.py  Units…: scale image + line -> µm/pixel, and fps
 tests/
 ├── test_parity.py             drives old + new through the same actions, compares pixels/CSV
 ├── test_dataset_roundtrip.py  loads a fake data folder in both, compares files written
@@ -283,6 +322,9 @@ wormscope_gui3.py          the original single-file version, kept for reference
 | change which tool a new worm starts with | `NEW_WORM_TOOL` in `config.py` |
 | change SAM2 prompting or tracking | `ui/sam.py` (GUI) + `segmentation/sam2_backend.py` (API calls) |
 | swap in another segmentation model | implement `add_points` / `propagate` / `reset`, set `wormscope.segmentation.SEGMENTER_FACTORY` |
+| change how µm/pixel is calibrated (scale image + line) | `ui/calibration_dialog.py`, maths in `core/metrics.py` (`um_per_px`, `UNIT_TO_UM`) |
+| change how pixels become µm in plots / CSV | `core/metrics.py` (`unit_scales`), `io/writers.py` |
+| change how area / length are measured | `core/geometry.py` (`mask_stats`), `core/metrics.py` |
 | remember another path or preference | `settings.py` (JSON on disk) + a picker in `ui/` |
 | change startup / dataset selection | `app.resolve_dataset` (or `main.py` for the CLI) |
 
@@ -369,15 +411,16 @@ saves in both, and compares every file written to disk.
 | ← / → | previous / next frame — from anywhere in the window |
 | Shift+← / → | jump ten frames |
 | Space | play / pause |
-| N | new worm (armed with SAM +, ready to click) |
+| N | new worm (armed with the + tool, ready to click) |
 | Shift+click | flip the SAM point's sign for that one click |
 | Shift+drag | Draw erases / Erase draws, for that one stroke |
-| P | copy the selected mask to the next frame |
-| O | toggle onion skin |
-| Ctrl+Z / Ctrl+Y | undo / redo |
-| Ctrl+S | save |
+| + / − | zoom the editing canvas in / out (also in the Units… dialog) |
+| ⌘Z or Ctrl+Z | undo |
+| ⌘⇧Z or Ctrl+Shift+Z (also Ctrl+Y) | redo |
+| W A S D, or Alt/Option + arrows | pan the editing canvas |
+| ⌘S or Ctrl+S, ⌘⇧S or Ctrl+Shift+S | save |
 
 ← / → are window-wide shortcuts rather than plain key presses, and buttons and
 sliders hand focus back after a click. Otherwise the last control you touched
-would quietly eat the keyboard — dragging the zoom slider once and then pressing
-← would nudge the zoom instead of stepping back a frame.
+would quietly eat the keyboard — dragging the brush slider once and then pressing
+← would nudge the brush instead of stepping back a frame.

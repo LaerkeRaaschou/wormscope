@@ -14,6 +14,13 @@ QGroupBox {
     margin-top: 14px;
     padding: 8px;
 }
+/* the small titled boxes in the Zoom column ("AI edits", "Manual edits") */
+QGroupBox#toolbox {
+    background-color: $bg;
+    border-radius: 6px;
+    margin-top: 12px;
+    padding: 2px;
+}
 QGroupBox::title {
     subcontrol-origin: margin;
     subcontrol-position: top left;

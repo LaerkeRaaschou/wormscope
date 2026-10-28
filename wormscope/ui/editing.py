@@ -1,5 +1,6 @@
 """Mask editing in the Zoom canvas: tools, brush strokes and metric refresh."""
 
+from ..config import PAN_STEP, ZOOM_STEP
 from ..core.geometry import stamp_disk, stamp_stroke
 from ..core.kinematics import refresh_kinematics
 from ..core.metrics import apply_mask_stats
@@ -18,13 +19,31 @@ class EditingMixin:
         self.zoomv.brush = v
         self.brush_val.setText(str(v))
 
-    def _set_zoom(self, v):
-        self.zoomv.set_zoom(v / 10.0)
+    # --- zoom --------------------------------------------------------------
+    def _zoom_text(self):
+        """The Zoom canvas's magnification as a percentage (100 % = one image
+        pixel per screen pixel)."""
+        return f"{self.zoomv.zoom * 100:.0f} %"
+
+    def _zoom_step(self, direction):
+        """One − / + step (buttons and the − / + keys): ×1.25 per step, around
+        the centre of the view."""
+        if not self.zoomv.has_image():
+            return
+        self.zoomv.set_zoom(self.zoomv.zoom * ZOOM_STEP ** direction)
+
+    def _zoom_out_full(self):
+        """“Zoom out”: show the whole frame, whatever is selected."""
+        if self.zoomv.has_image():
+            self.zoomv.frame_fit()
+
+    def _pan_step(self, dx, dy):
+        """Pan keys (WASD, or Alt/Option + arrows): one step = PAN_STEP of
+        the view, so it feels the same at every zoom level."""
+        self.zoomv.pan_by(dx * PAN_STEP, dy * PAN_STEP)
 
     def _on_viewport_changed(self):
-        self.zoom_slider.blockSignals(True)
-        self.zoom_slider.setValue(int(round(self.zoomv.zoom * 10)))
-        self.zoom_slider.blockSignals(False)
+        self.zoom_label.setText(self._zoom_text())
         self.video.set_viewport(self.zoomv.viewport_rect())
 
     # --- painting ------------------------------------------------------------
@@ -58,6 +77,7 @@ class EditingMixin:
         # Remember that a human painted this frame: before any re-track, it is
         # handed to SAM2 as a mask prompt so the correction survives and the
         # tracker works *from* it (see SamMixin._anchor_edits).
+        was_hand = (wid, idx) in self._hand_edited
         self._hand_edited.add((wid, idx))
         if self.sam is not None and self.sam.busy:
             # SAM2 is tracking right now: this frame is yours, and the results
@@ -65,8 +85,16 @@ class EditingMixin:
             self._edited_during_run.add((wid, idx))
         self._recompute(self.selected, self.frame)
         self._after_edit()
-        self._push_action(lambda: self._restore_mask(wid, idx, before),
-                          lambda: self._restore_mask(wid, idx, after))
+        # Undo also takes back the "painted by hand" mark, so an undone stroke
+        # leaves the frame free for SAM2 again (and unlocked).
+        self._push_action(
+            lambda: self._restore_stroke(wid, idx, before, was_hand),
+            lambda: self._restore_stroke(wid, idx, after, True))
+
+    def _restore_stroke(self, wid, idx, mask, hand_edited):
+        (self._hand_edited.add if hand_edited
+         else self._hand_edited.discard)((wid, idx))
+        self._restore_mask(wid, idx, mask)
 
     def _after_edit(self):
         """Refresh everything after the selected worm's current mask changed."""
@@ -110,22 +138,3 @@ class EditingMixin:
     def _toggle_smooth(self, on):
         self.plot.set_smooth(on)
         self.plot.set_frame(self.frame)
-
-    # --- copy a mask forward -------------------------------------------------
-    def _propagate(self):
-        """Copy the selected worm's current mask into the next frame."""
-        w = self.selected
-        if w is None or self.frame >= self.n - 1:
-            return
-        nxt = self.frame + 1
-        before = self.masks.get(w.obj_id, nxt).copy()
-        after = self.masks.get(w.obj_id, self.frame).copy()
-        self.masks.set(w.obj_id, nxt, after.copy())
-        self._hand_edited.add((w.obj_id, nxt))
-        self._recompute(w, nxt)
-        self.set_frame(nxt)                              # step onto the new frame
-        if self.masks.savable:
-            self.save_btn.setEnabled(True)
-        self._update_title()
-        self._push_action(lambda: self._restore_mask(w.obj_id, nxt, before),
-                          lambda: self._restore_mask(w.obj_id, nxt, after))
