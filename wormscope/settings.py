@@ -15,17 +15,17 @@ from pathlib import Path
 from . import config
 
 DEFAULTS = {
-    "sam2_cfg": "",
-    "sam2_ckpt": "",
+    "sam2_cfg": "/Users/laerkesteinraaschou/Desktop/job/wormscope/sam2/sam2/configs/sam2.1/sam2.1_hiera_l.yaml",
+    "sam2_ckpt": "/Users/laerkesteinraaschou/Desktop/job/wormscope/sam2/checkpoints/sam2.1_hiera_large.pt",
     "sam2_device": "",        # "" = auto: cuda -> mps -> cpu
 }
 
 
 def settings_path() -> Path:
     """Where the settings file lives."""
-    override = os.environ.get("WORMSCOPE_SETTINGS")
-    if override:
-        return Path(override).expanduser()
+    #override = os.environ.get("WORMSCOPE_SETTINGS")
+    #if override:
+    #    return Path(override).expanduser()
     return Path.home() / ".wormscope" / "settings.json"
 
 
