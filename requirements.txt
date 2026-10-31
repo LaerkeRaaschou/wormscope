@@ -1,3 +1,15 @@
+# wormscope dependencies — for a development venv.
+#
+# Users don't need this file: pyproject.toml installs everything, SAM2 and
+# torch included (see "Install" in README.md).
+#
+# Set up a fresh environment:
+#     python3 -m venv .venv
+#     .venv/bin/pip install -r requirements.txt
+#     .venv/bin/pre-commit install --install-hooks
+#
+# The floors below are the versions this project is known to run on
+# (Python 3.13). Nothing here has to be exact — raise or pin as you like.
 # Wormscope dependencies
 # Recommended Python: 3.12
 
