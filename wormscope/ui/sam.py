@@ -6,20 +6,23 @@ brush, undo, frame stepping and the plots all keep working while SAM2 thinks —
 the only things that wait are further SAM2 requests, which queue behind the
 running one.
 
-The config + checkpoint are asked for once, the first time SAM2 is needed, and
-remembered in ~/.wormscope/settings.json — see :mod:`wormscope.settings` for how
-to change them later without the GUI. The backend itself is swappable — see
+The first time SAM2 is needed and its checkpoint isn't on this machine yet,
+wormscope offers to download it (the config ships with the sam2 package). The
+model size and hand-picked files live in ~/.wormscope/settings.json — see the
+SAM2 menu, or :mod:`wormscope.settings` for the command line. The backend itself is swappable — see
 :mod:`wormscope.segmentation`.
 """
 
 from pathlib import Path
 
 import numpy as np
-from PyQt6.QtWidgets import QMessageBox
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 
 from .. import segmentation, settings
 from ..core.models import Worm
-from ..segmentation import hydra_config_name, pair_warning, sam2_config_dir
+from ..segmentation import (hydra_config_name, pair_warning, sam2_config_dir,
+                            sam2_models)
 from .file_dialogs import pick_file
 from .sam_worker import SamWorker
 
@@ -76,6 +79,69 @@ class SamMixin:
             f"(or --set-sam2 <config> <checkpoint>)")
         self._start_sam(warm=True)
         return True
+
+    # --- the automatic model -------------------------------------------------
+    def _download_sam2_model(self, key=None):
+        """Download a model's checkpoint with a progress dialog. Returns True
+        when it is on disk afterwards."""
+        key = key or sam2_models.current_model()
+        label, _cfg, name, mb = sam2_models.MODELS[key]
+        dlg = QProgressDialog(f"Downloading SAM2 model “{label}” (~{mb} MB)…",
+                              "Cancel", 0, 100, self)
+        dlg.setWindowTitle("SAM2 model")
+        dlg.setWindowModality(Qt.WindowModality.WindowModal)
+        dlg.setMinimumDuration(0)
+        dlg.setValue(0)
+
+        def progress(done, total):
+            if total:
+                dlg.setValue(int(100 * done / total))
+            dlg.setLabelText(f"Downloading SAM2 model “{label}”…\n"
+                             f"{done / 1e6:.0f} of "
+                             f"{(total or mb * 1e6) / 1e6:.0f} MB")
+            QApplication.processEvents()
+            return dlg.wasCanceled()
+
+        try:
+            sam2_models.download(key, progress)
+        except sam2_models.DownloadCancelled:
+            return False
+        except Exception as err:             # noqa: BLE001 - shown to the user
+            QMessageBox.warning(
+                self, "SAM2 model",
+                f"Could not download {name}:\n\n{err}\n\nCheck the internet "
+                f"connection and try again, or choose a checkpoint you already "
+                f"have via SAM2 ▸ Choose files manually…")
+            return False
+        finally:
+            dlg.close()
+        return True
+
+    def _offer_sam2_download(self):
+        """The checkpoint isn't on this machine: offer to fetch it (or to pick
+        files by hand). Returns True when SAM2 can now be started."""
+        key = sam2_models.current_model()
+        label, _cfg, _name, mb = sam2_models.MODELS[key]
+        box = QMessageBox(self)
+        box.setWindowTitle("SAM2 model")
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setText(f"SAM2 needs its model weights, which aren't on this "
+                    f"computer yet.\n\nDownload “{label}” now (~{mb} MB, once)?")
+        box.setInformativeText("A different size can be picked in the SAM2 "
+                               "menu. Saved in "
+                               f"{sam2_models.checkpoint_dir()}")
+        download = box.addButton("Download", QMessageBox.ButtonRole.AcceptRole)
+        manual = box.addButton("Choose files…", QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.exec()
+        if box.clickedButton() == download:
+            if not self._download_sam2_model(key):
+                return False
+            self._start_sam(warm=True)
+            return True
+        if box.clickedButton() == manual:
+            return self._choose_sam2_files(explain=False)
+        return False
 
     # --- the worker ----------------------------------------------------------
     def _start_sam(self, warm=False):
@@ -150,20 +216,20 @@ class SamMixin:
             f"Could not start SAM2:\n\n{message}\n\n"
             + (f"⚠ {mismatch}\n\n" if mismatch else "")
             + f"In use ({source}):\nconfig: {name}\ncheckpoint: {ckpt}"
-            f"\n\nPick a different config + checkpoint now?\n"
-            f"(If SAM2 itself is missing: pip install sam2)")
+            "\n\nPick a config + checkpoint by hand now?\n"
+            "(To go back to the automatic model: SAM2 menu ▸ pick a size.)")
         self._shutdown_sam()
         if answer == QMessageBox.StandardButton.Yes:
             self._choose_sam2_files(explain=False)
 
     def _on_sam_needs_files(self, _message):
-        """SAM2 has no config/checkpoint yet: ask once, then it is remembered."""
+        """SAM2 has no checkpoint yet: offer the download (or the picker)."""
         self.progress_panel.finish()
         self._shutdown_sam()
-        if self._choose_sam2_files():
+        if self._offer_sam2_download():
             self.info.setText("SAM2 is loading — click again in a moment.")
         else:
-            self.info.setText("SAM2 needs a config and a checkpoint.\n"
+            self.info.setText("SAM2 needs its model.\n"
                               "You will be asked again next time you click a "
                               "SAM point.")
 

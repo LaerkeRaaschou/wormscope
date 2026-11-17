@@ -1,13 +1,15 @@
 """SAM2 interactive segmentation (video predictor, lazily loaded).
 
-The config + checkpoint paths are resolved by :mod:`wormscope.settings`, so they
-only have to be chosen once (GUI: “SAM2 files…”), never re-entered per launch.
+The config + checkpoint are resolved by :mod:`wormscope.settings`: normally the
+config ships inside the sam2 package and the checkpoint is downloaded once
+(:mod:`wormscope.segmentation.sam2_models`); hand-picked files override that.
 
 To plug in a different segmenter, implement the same three methods
 (``add_points``, ``propagate``, ``reset``) and point
 :data:`wormscope.segmentation.SEGMENTER_FACTORY` at your class.
 """
 
+import sys
 import time
 from pathlib import Path
 
@@ -23,12 +25,32 @@ class MissingSam2Paths(RuntimeError):
     can offer a file picker instead of a dead-end error."""
 
 
-def sam2_package_dir():
-    """Folder of the installed `sam2` package, or None if it isn't importable."""
+def sam2_import_problem():
+    """Why `import sam2` doesn't give us the real SAM2 package, or "" if it does.
+
+    The classic trap: starting wormscope from a folder that contains a *clone*
+    of the SAM2 repo called ``sam2``. That folder has no __init__.py, so Python
+    imports it as an empty namespace package (``sam2.__file__`` is None) and
+    the real package — installed or not — is never seen."""
     try:
         import sam2
-    except Exception:
+    except Exception as err:                 # noqa: BLE001 - shown to the user
+        return (f"SAM2 is not installed in this Python environment ({err}).\n"
+                f"Python in use: {sys.executable}")
+    if getattr(sam2, "__file__", None) is None:
+        where = ", ".join(str(p) for p in getattr(sam2, "__path__", []))
+        return ("Python found a plain folder named 'sam2' instead of the SAM2 "
+                f"package:\n{where}\n\nStart wormscope from another folder (or "
+                "move that folder), and make sure SAM2 is installed in this "
+                f"environment.\nPython in use: {sys.executable}")
+    return ""
+
+
+def sam2_package_dir():
+    """Folder of the installed `sam2` package, or None if it isn't usable."""
+    if sam2_import_problem():
         return None
+    import sam2
     return Path(sam2.__file__).resolve().parent
 
 
@@ -140,11 +162,16 @@ class Sam2Backend:
         # Resolve the paths BEFORE importing torch, so a missing config is
         # reported as MissingSam2Paths (which the GUI answers with a file
         # picker) rather than as an unrelated ImportError.
+        # A broken install is reported first: no point downloading a model
+        # that can't be loaded.
+        problem = sam2_import_problem()
+        if problem:
+            raise RuntimeError(problem)
         cfg, ckpt, source = settings.sam2_paths(cfg, ckpt)
         if not cfg or not ckpt:
             raise MissingSam2Paths(
-                "wormscope needs the SAM2 config and checkpoint "
-                "(e.g. sam2.1_hiera_l.yaml and sam2.1_hiera_large.pt).")
+                "wormscope needs a SAM2 checkpoint — download the model, or "
+                "choose a config + checkpoint by hand.")
         print(f"[sam2] {source}")
         import torch
         from sam2.build_sam import build_sam2_video_predictor

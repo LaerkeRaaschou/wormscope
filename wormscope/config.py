@@ -51,10 +51,12 @@ NEW_WORM_TOOL = "sam"
 # --------------------------------------------------------------------------- #
 # SAM2 (optional)
 # --------------------------------------------------------------------------- #
-# Set as default, if the GUI doesn't remember
-SAM2_CFG = "/Users/laerkesteinraaschou/Desktop/job/wormscope/sam2/sam2/configs/sam2.1/sam2.1_hiera_l.yaml"     # e.g. "/Users/you/sam2/configs/sam2.1/sam2.1_hiera_l.yaml"
-SAM2_CKPT = "/Users/laerkesteinraaschou/Desktop/job/wormscope/sam2/checkpoints/sam2.1_hiera_large.pt"     # e.g. "/Users/you/sam2/checkpoints/sam2.1_hiera_large.pt"
+# Hand-picked files, used if the GUI doesn't remember any. Normally left empty:
+# the model below is then downloaded and used automatically.
+SAM2_CFG = ""      # e.g. "/Users/you/sam2/configs/sam2.1/sam2.1_hiera_l.yaml"
+SAM2_CKPT = ""     # e.g. "/Users/you/sam2/checkpoints/sam2.1_hiera_large.pt"
 SAM2_DEVICE = ""   # "" = auto-detect (cuda -> mps -> cpu)
+SAM2_MODEL = "small"  # tiny / small / base_plus / large — downloaded on first use
 
 # How many frames' image embeddings to keep
 SAM2_EMBED_CACHE = 16

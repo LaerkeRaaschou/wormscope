@@ -1,0 +1,66 @@
+# Install wormscope as a program (recommended for users):
+#
+#     uv tool install git+https://github.com/LaerkeRaaschou/wormscope
+#     wormscope                     # start it (or use Help ▸ Create desktop shortcut)
+#     uv tool upgrade wormscope     # update (the app also offers this itself)
+#
+# Development checkout:  uv sync --extra dev   (or: pip install -e ".[dev]")
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wormscope"
+dynamic = ["version"]
+description = "Annotate, segment (SAM2) and measure C. elegans in microscopy videos."
+readme = "README.md"
+# 3.12 is the one version every target has wheels for (PyTorch's native
+# Windows-on-ARM builds are 3.12 only); 3.13 works elsewhere.
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    # --- the GUI ---
+    "PyQt6>=6.11",
+    "numpy>=2.5",
+    "Pillow>=12.0",
+    "matplotlib>=3.11",
+    # Skeletons + length. No Windows-on-ARM wheels; the GUI warns and carries on.
+    "scikit-image>=0.26; platform_machine != 'ARM64'",
+    # --- overlay video export ---
+    "imageio>=2.37",
+    "imageio-ffmpeg>=0.6",
+    # --- SAM2 (configs ship inside the package; the weights are downloaded
+    #     by wormscope on first use) ---
+    "torch>=2.5.1",
+    "torchvision>=0.20.1",
+    "sam2 @ https://github.com/facebookresearch/sam2/archive/refs/heads/main.zip",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "pre-commit>=4.0", "ruff>=0.16"]
+
+# gui-scripts: on Windows the `wormscope` launcher opens no console window.
+[project.gui-scripts]
+wormscope = "wormscope.app:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "wormscope.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["wormscope*"]
+
+[tool.setuptools.package-data]
+wormscope = ["resources/*"]
+
+# Torch from PyTorch's own CPU index on Windows and Linux: the PyPI wheels for
+# Linux carry ~2 GB of CUDA most laptops can't use, and PyPI has nothing for
+# Windows on ARM. macOS uses PyPI (those wheels include Apple-GPU support).
+# For an NVIDIA machine, change the URL to e.g. https://download.pytorch.org/whl/cu126
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

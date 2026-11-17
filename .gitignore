@@ -20,3 +20,12 @@ htmlcov/
 
 # wormscope: local settings and data folders
 *.mp4
+
+# SAM2 weights: downloaded by wormscope into ~/.wormscope/checkpoints, never committed
+*.pt
+*.pth
+*.part
+
+# packaging
+build/
+dist/

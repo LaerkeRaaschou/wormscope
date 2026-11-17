@@ -48,3 +48,27 @@ def run(path=None, argv=None):
     WINDOWS.append(win)
     win.show()
     return app.exec()
+
+
+def _log_to_file_if_windowless():
+    """Started from a shortcut / the windowed launcher there is no console, so
+    print() output and tracebacks would vanish. Send them to a log file instead,
+    so there is something to look at when a user reports a problem."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    log = Path.home() / ".wormscope" / "wormscope.log"
+    try:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        stream = open(log, "a", buffering=1, encoding="utf-8")
+    except OSError:
+        return
+    sys.stdout = sys.stdout or stream
+    sys.stderr = sys.stderr or stream
+
+
+def main():
+    """Entry point of the `wormscope` command (see pyproject.toml):
+    ``wormscope`` or ``wormscope path/to/folder``."""
+    _log_to_file_if_windowless()
+    path = sys.argv[1] if len(sys.argv) > 1 else None
+    sys.exit(run(path))

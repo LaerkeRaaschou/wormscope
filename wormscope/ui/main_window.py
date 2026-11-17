@@ -10,6 +10,7 @@ which frame are we on" logic, and inherits the rest from one mixin per area:
     WormListMixin  wormscope/ui/worms.py       add / delete / reassign worms
     SamMixin       wormscope/ui/sam.py         SAM2 point prompts
     IOActionsMixin wormscope/ui/io_actions.py  open, import, units, save, export
+    AppMenuMixin   wormscope/ui/app_menu.py    menu bar: SAM2 model, shortcut, updates
 
 To add a feature: put the widget in layout.py and the behaviour in the matching
 mixin (or a new one — add it to the bases below).
@@ -25,6 +26,7 @@ from ..config import (ACCEL_METRIC, HIT_RADIUS, KINEMATIC_METRICS, MAX_PLOTS,
                       SPEED_METRIC)
 from ..core.models import Dataset, Worm
 from ..core.utils import find_col
+from .app_menu import AppMenuMixin
 from .editing import EditingMixin
 from .history import HistoryMixin
 from .io_actions import IOActionsMixin
@@ -38,14 +40,17 @@ WINDOWS: list = []
 
 
 class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
-                 WormListMixin, SamMixin, IOActionsMixin, QMainWindow):
+                 WormListMixin, SamMixin, IOActionsMixin, AppMenuMixin,
+                 QMainWindow):
     HIT_RADIUS = HIT_RADIUS
 
     def __init__(self, ds: Dataset):
         super().__init__()
         self._init_state(ds)
         self._build_ui()                     # LayoutMixin
+        self._build_menu()                   # AppMenuMixin
         self._finish_setup()
+        self._start_update_check()           # AppMenuMixin, in the background
 
     # --- construction --------------------------------------------------------
     def _init_state(self, ds: Dataset):

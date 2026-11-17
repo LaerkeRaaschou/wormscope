@@ -8,12 +8,13 @@ and ``reset()``. Override it to swap in another model or a test stand-in::
     segmentation.SEGMENTER_FACTORY = MyBackend
 
 The SAM2 config + checkpoint paths come from :mod:`wormscope.settings`, which
-remembers them between runs.
+remembers them between runs; :mod:`.sam2_models` picks and downloads the model.
 """
 
 from .sam2_backend import (MissingSam2Paths, Sam2Backend,  # noqa: F401
                            hydra_config_name, pair_warning, prepare_jpeg_dir,
-                           sam2_config_dir, sam2_package_dir)
+                           sam2_config_dir, sam2_import_problem,
+                           sam2_package_dir)
 
 SEGMENTER_FACTORY = Sam2Backend
 

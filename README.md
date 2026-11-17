@@ -16,9 +16,35 @@ python main.py path/to/photo.tif     # a single image (.png .jpg .jpeg .tif) -> 
 window with only **Upload video or image…** and **Continue editing video…** live — no demo data,
 no default folder.
 
-Deps: `pip install PyQt6 matplotlib pillow numpy scikit-image`
-Optional: `imageio` + `imageio-ffmpeg` (overlay video export), `sam2` + `torch`
-(SAM2 tools — see below).
+## Install (for users — no conda, no cloning)
+
+1. Install **uv** once (a small tool that installs Python programs):
+   * Windows (PowerShell): `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+   * macOS / Linux (Terminal): `curl -LsSf https://astral.sh/uv/install.sh | sh`
+
+   Then close and reopen the terminal.
+2. Install wormscope — Python, PyTorch and SAM2 come with it:
+   ```bash
+   uv tool install git+https://github.com/LaerkeRaaschou/wormscope
+   ```
+   *Windows on ARM (Snapdragon / Copilot+ laptops):* use the emulated x64 Python,
+   which every package has wheels for:
+   `uv tool install --python cpython-3.12-windows-x86_64-none git+https://github.com/LaerkeRaaschou/wormscope`
+3. Start it with `wormscope`, then **Help ▸ Create desktop shortcut** — from then
+   on it is a double-click.
+
+The first SAM2 click offers to download the model weights (~185 MB for the
+default “small” model, once). Pick another size under **SAM2 ▸ Model size**.
+
+**Updates:** wormscope checks once a day and offers to update itself (on Windows
+it closes and updates in a separate window). By hand: `uv tool upgrade wormscope`.
+Releasing one = bump `__version__` in `wormscope/__init__.py`, push, and tag it
+(`v3.2.0`) or make a GitHub release.
+
+Without a console window, output goes to `~/.wormscope/wormscope.log`.
+
+**Developing:** `uv sync --extra dev` (or `pip install -e ".[dev]"` in a venv),
+then `python main.py` as above.
 
 ## Segmenting with SAM2
 
@@ -112,22 +138,35 @@ lot. Encode times, cache hits and misses are printed to the terminal:
 [sam2] propagated 118 frames (forwards from 12) in 24.3s
 ```
 
-## SAM2 setup (once, not every launch)
+## SAM2 setup (automatic)
 
-**You are asked once, when SAM2 is first needed.** A file picker opens for the
-config (`*.yaml`) and the checkpoint (`*.pt`); both are written to
-`~/.wormscope/settings.json` and reused on every future launch — no
-`export SAM2_CFG=…` before starting the program, and no button cluttering the
-toolbar for a thing you do once. If the pair turns out not to load, the error
-dialog offers the picker again.
+**Normally there is nothing to set up.** Only the model *size* is a choice
+(**SAM2 ▸ Model size**: tiny / small / base+ / large, default `small`):
 
-To change them later without the GUI, see `python -m wormscope.settings` below.
+* the **config** ships inside the installed `sam2` package and is passed to Hydra
+  by name (`configs/sam2.1/sam2.1_hiera_s.yaml`) — no file to find;
+* the **checkpoint** is downloaded once, on the first SAM2 click, into
+  `~/.wormscope/checkpoints/` (`WORMSCOPE_CHECKPOINTS` overrides). A matching
+  `.pt` already in `wormscope/models/` is used as-is (git-ignored).
+
+**SAM2 ▸ Choose files manually…** still lets you pick a config + checkpoint
+yourself (e.g. a fine-tuned model). Those are written to
+`~/.wormscope/settings.json` and win over the automatic model until you pick a
+size in the menu again.
 
 Where a path comes from, highest priority first:
 
-1. the settings file (`~/.wormscope/settings.json`, what the button writes);
+1. the settings file (`~/.wormscope/settings.json`, what the manual picker writes);
 2. the `SAM2_CFG` / `SAM2_CKPT` environment variables;
-3. `SAM2_CFG` / `SAM2_CKPT` in `wormscope/config.py` (bake them into the project).
+3. `SAM2_CFG` / `SAM2_CKPT` in `wormscope/config.py` (bake them into the project);
+4. automatic: a checkpoint from 1–3 without a config gets its matching config;
+   otherwise the chosen model size (`sam2_model` / `SAM2_MODEL` / `config.py`).
+
+A `.yaml` without any `_target_` entry is skipped: that's the one-line symlink
+stub a Windows git clone of the SAM2 repo leaves at its top level.
+Starting wormscope from a folder that contains a SAM2 *clone* named `sam2`
+hides the installed package (Python imports the folder instead); wormscope now
+says so in the error instead of crashing.
 
 **Why the config is special.** SAM2 composes its config with
 [Hydra](https://hydra.cc) (`hydra-core`, installed alongside `sam2`), and
@@ -155,7 +194,9 @@ To inspect or change the saved values without opening the GUI:
 python -m wormscope.settings                       # what is set, and what wins
 python -m wormscope.settings --set-sam2 configs/sam2.1/sam2.1_hiera_l.yaml \
                                        ~/Desktop/job/sam2.1_hiera_large.pt
-python -m wormscope.settings --clear-sam2          # fall back to env vars again
+python -m wormscope.settings --clear-sam2          # fall back to env vars / automatic
+python -m wormscope.settings --model tiny          # choose the automatic model size
+python -m wormscope.settings --download            # fetch its checkpoint now
 ```
 
 Because the settings file outranks the environment, `export SAM2_CFG=…` has no
