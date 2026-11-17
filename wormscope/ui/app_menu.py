@@ -24,8 +24,22 @@ class _UpdateNotifier(QObject):
 
 class AppMenuMixin:
 
+    def _show_save_folder(self):
+        """Open the folder Save writes to in Finder / Explorer."""
+        from PyQt6.QtCore import QUrl
+        from PyQt6.QtGui import QDesktopServices
+        folder = self._save_folder()
+        if folder is not None and folder.is_dir():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
     def _build_menu(self):
         bar = self.menuBar()
+
+        file_menu = bar.addMenu("File")
+        # Shortcuts are window-wide QShortcuts (layout.py); shown here as text.
+        file_menu.addAction("Save\t⌘S / Ctrl+S", self._save)
+        file_menu.addAction("Save as…\t⌘⇧S / Ctrl+Shift+S", self._save_as)
+        file_menu.addAction("Show save folder", self._show_save_folder)
 
         sam = bar.addMenu("SAM2")
         size = sam.addMenu("Model size")

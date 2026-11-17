@@ -11,7 +11,7 @@ which frame are we on" logic, and inherits the rest from one mixin per area:
     SamMixin       wormscope/ui/sam.py         SAM2 point prompts
     ManualLengthMixin wormscope/ui/manual_length.py  measure length by hand
     AnnotationModeMixin wormscope/ui/annotation_mode.py  Automatic | Manual view
-    IOActionsMixin wormscope/ui/io_actions.py  open, import, units, save, export
+    IOActionsMixin wormscope/ui/io_actions.py  open, import, units, save, save as, export
     AppMenuMixin   wormscope/ui/app_menu.py    menu bar: SAM2 model, shortcut, updates
 
 To add a feature: put the widget in layout.py and the behaviour in the matching
@@ -113,6 +113,7 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
         self.list.setCurrentRow(-1)          # cleared; _start_with_worm picks one
         self.plot.set_worm(None)
         self._apply_session(self.ds.session)  # settings saved with this video
+        self._update_save_folder()
         self._update_title()
         self._set_annotation_mode(self._initial_annotation_mode(self.ds.session),
                                   remember=False)
@@ -154,6 +155,7 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
                   self.btn_erase, self.btn_sam_pos, self.btn_sam_neg,
                   self.btn_measure, self.measure_clear_btn,
                   self.mode_auto_btn, self.mode_manual_btn,
+                  self.save_as_btn,
                   self.outline_btn, self.brush_slider, self.zoom_in_btn,
                   self.zoom_full_btn,
                   self.zoom_out_btn, self.fit_btn,

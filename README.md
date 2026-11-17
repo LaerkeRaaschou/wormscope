@@ -347,6 +347,20 @@ Uploading the same raw frames again always starts fresh. If
 `<name>_wormscope_2/` (then `_3`, …), so earlier annotations are never
 overwritten.
 
+### Choosing where it is saved
+
+Under the Save button, the Zoom controls show which folder Save writes to
+(hover for the full path; **File ▸ Show save folder** opens it). **Save as…**
+(button, **File ▸ Save as…**, or ⌘⇧S / Ctrl+Shift+S) saves the whole video
+(frames, masks, skeletons, `measurements.csv`, `manual_lengths.csv`,
+`scale.png`, `wormscope.json`) into another folder, and from then on Save
+writes there. If you pick an empty folder, the video goes in that folder. If
+the folder has other things in it, the video goes in a subfolder named after
+the video (`_2`, `_3`, … when that name is taken), so nothing is mixed into
+other files. Unchanged masks are copied byte for byte, and frames are
+hard-linked when they are on the same disk. The previous folder is left
+exactly as it was. Save as… starts in the folder you used last time.
+
 Frame alignment keys on the trailing integer in each filename, so frames, masks
 and CSV rows line up even when their name prefixes differ. If a folder you point
 at has no frames, the window opens empty rather than substituting anything.
@@ -416,7 +430,8 @@ tests/
 ├── test_plots.py              median-normalized curves, hover read-out, % progress
 └── test_editing_tools.py      Shift swaps draw/erase, arrow keys, N, removed buttons
 wormscope_gui3.py          the original single-file version, kept for reference
-scripts/check_manual_length.py  end-to-end check: Measure tool, manual_lengths.csv, scale.png
+scripts/check_manual_length.py  end-to-end check: Measure tool, modes, manual_lengths.csv, scale.png
+scripts/check_save_as.py   end-to-end check: Save as… moves the whole video
 ```
 
 ## Where to make a change
@@ -536,7 +551,8 @@ saves in both, and compares every file written to disk.
 | ⌘Z or Ctrl+Z | undo |
 | ⌘⇧Z or Ctrl+Shift+Z (also Ctrl+Y) | redo |
 | W A S D, or Alt/Option + arrows | pan the editing canvas |
-| ⌘S or Ctrl+S, ⌘⇧S or Ctrl+Shift+S | save |
+| ⌘S or Ctrl+S | save |
+| ⌘⇧S or Ctrl+Shift+S | save as… (another folder) |
 
 ← / → are window-wide shortcuts rather than plain key presses, and buttons and
 sliders hand focus back after a click. Otherwise the last control you touched

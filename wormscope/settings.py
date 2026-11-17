@@ -27,6 +27,7 @@ DEFAULTS = {
     "check_updates": "on",    # "off" = never look for a newer version
     "last_update_check": "",  # date of the last look (once a day at most)
     "annotation_mode": "",    # last Automatic / Manual choice ("" = automatic)
+    "save_dir": "",           # where Save as… last put a video (its parent folder)
 }
 
 

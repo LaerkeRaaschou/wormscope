@@ -121,11 +121,11 @@ class LayoutMixin:
                           ("Ctrl+Shift+Z", self._redo_action),
                           ("Meta+Shift+Z", self._redo_action),
                           ("Ctrl+Y", self._redo_action),
-                          # Save: ⌘S / Ctrl+S, and ⌘⇧S / Ctrl+Shift+S
+                          # Save: ⌘S / Ctrl+S; Save as…: ⌘⇧S / Ctrl+Shift+S
                           ("Ctrl+S", self._save),
                           ("Meta+S", self._save),
-                          ("Ctrl+Shift+S", self._save),
-                          ("Meta+Shift+S", self._save)):
+                          ("Ctrl+Shift+S", self._save_as),
+                          ("Meta+Shift+S", self._save_as)):
             sc = QShortcut(QKeySequence(key), self)
             sc.setContext(Qt.ShortcutContext.WindowShortcut)
             sc.activated.connect(slot)
@@ -330,9 +330,17 @@ class LayoutMixin:
         self.redo_btn.clicked.connect(self._redo_action)
         self.redo_btn.setEnabled(False)
         self.save_btn = QPushButton("Save")
-        self.save_btn.setToolTip("Save (⌘S / Ctrl+S, or ⌘⇧S / Ctrl+Shift+S)")
+        self.save_btn.setToolTip("Save (⌘S / Ctrl+S)")
         self.save_btn.clicked.connect(self._save)
         self.save_btn.setEnabled(False)
+        self.save_as_btn = QPushButton("Save as…")
+        self.save_as_btn.setToolTip("Save the whole video to another folder "
+                                    "and keep working there (⌘⇧S / "
+                                    "Ctrl+Shift+S)")
+        self.save_as_btn.clicked.connect(self._save_as)
+        self.save_folder_label = QLabel()
+        self.save_folder_label.setStyleSheet("color: #5a6b85; font-size: 11px;")
+        self.save_folder_label.setWordWrap(True)
 
         # Every control is shrunk to CONTROL_H; sliders lose their fixed widths
         # so they can breathe in the narrow column.
@@ -342,7 +350,8 @@ class LayoutMixin:
                  self.mode_auto_btn, self.mode_manual_btn,
                  self.sam_clear_btn, self.sam_run_btn, self.sam_again_btn,
                  self.zoom_out_btn, self.zoom_in_btn, self.fit_btn,
-                 self.zoom_full_btn, self.undo_btn, self.redo_btn, self.save_btn)
+                 self.zoom_full_btn, self.undo_btn, self.redo_btn, self.save_btn,
+                 self.save_as_btn)
         for b in (self.zoom_out_btn, self.zoom_in_btn):
             b.setFixedWidth(28)
         self.brush_slider.setMinimumWidth(60)
@@ -443,7 +452,9 @@ class LayoutMixin:
         hist.addWidget(self.undo_btn)
         hist.addWidget(self.redo_btn)
         hist.addWidget(self.save_btn, 1)
+        hist.addWidget(self.save_as_btn, 1)
         col.addLayout(hist)
+        col.addWidget(self.save_folder_label)   # where Save writes
 
         # --- progress ---
         # It sits in the column rather than floating: a long job then

@@ -41,6 +41,14 @@ class FrameSource:
     def __len__(self):
         return len(self._items)
 
+    def rebase(self, folder):
+        """Read the frames from `folder` from now on (same file names) — after
+        Save as… put copies there. Kept as is when any file is missing."""
+        folder = Path(folder)
+        new = [folder / Path(p).name for p in self._items]
+        if all(p.is_file() for p in new):
+            self._items = new
+
     def get(self, i: int) -> np.ndarray:
         arr = self._cache.get(i)
         if arr is None:
@@ -161,6 +169,34 @@ class MaskStore:
         for (w, i) in [k for k in self._masks if k[0] == new]:
             self.set_dirty(new, i)
         return old_files
+
+    def move_to(self, binary_dir, skel_dir):
+        """Make a new folder the home of every mask (Save as…).
+
+        Unchanged masks are copied file by file — binary and skeleton, byte
+        for byte, so nothing is recomputed; edited ones stay dirty and are
+        written there by the Save that follows. Returns how many files were
+        copied."""
+        import shutil
+        binary_dir, skel_dir = Path(binary_dir), Path(skel_dir)
+        binary_dir.mkdir(parents=True, exist_ok=True)
+        copied = 0
+        for key, old in list(self._paths.items()):
+            new = binary_dir / old.name
+            if key not in self.dirty and old.is_file():
+                if old.resolve() != new.resolve():
+                    shutil.copy2(old, new)
+                    copied += 1
+                    old_skel = self.skel_path_for(old)
+                    if old_skel is not None and old_skel.is_file():
+                        skel_dir.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(old_skel, skel_dir / old.name)
+            elif key not in self.dirty:
+                self.get(*key)                 # keep it in memory, then write it
+                self.dirty.add(key)
+            self._paths[key] = new
+        self.binary_dir, self.skel_dir = binary_dir, skel_dir
+        return copied
 
     def set_dirty(self, wid, idx):
         self.dirty.add((wid, idx))

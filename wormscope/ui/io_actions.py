@@ -4,9 +4,10 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import QMessageBox
 
+from .. import settings
 from ..core.metrics import plot_specs, unit_scales
 from ..io.export import export_overlay
-from ..io.loaders import build_raw_dataset, load_dataset
+from ..io.loaders import build_raw_dataset, has_saved_work, load_dataset
 from ..io.manual_lengths import MANUAL_FILE, write_manual_lengths
 from ..io.session import (SCALE_FILE, ensure_frames_in, save_scale_image,
                           write_session)
@@ -14,6 +15,23 @@ from ..io.writers import save_measurements_plot, write_measurements_csv
 from .calibration_dialog import CalibrationDialog
 from .file_dialogs import pick_folder, pick_video_or_image
 from .progress import Progress
+
+
+def save_as_target(picked: Path, current: Path) -> Path:
+    """Where Save as… puts the video when the user picks `picked`: that folder
+    itself when it is empty (or is the current one), otherwise a subfolder
+    named after the video — '<name>', or '<name>_2', '_3', … when taken — so
+    picking a folder full of other things never mixes files into it."""
+    if picked.resolve() == current.resolve() or not any(picked.iterdir()):
+        return picked
+    candidate, n = picked / current.name, 2
+    while candidate.exists() and (has_saved_work(candidate)
+                                  or any(candidate.iterdir())):
+        if candidate.resolve() == current.resolve():
+            return candidate
+        candidate = picked / f"{current.name}_{n}"
+        n += 1
+    return candidate
 
 
 class IOActionsMixin:
@@ -182,6 +200,68 @@ class IOActionsMixin:
         self._update_title()
         print("[save] masks, skeletons and measurements.csv written")
 
+    # --- Save as…: move the video to another folder --------------------------
+    def _save_folder(self):
+        """The folder Save writes to (None for the demo / no video)."""
+        return self.ds.csv_path.parent if self.ds.csv_path else None
+
+    def _save_as(self):
+        """Save the whole video — frames, masks, skeletons, measurements,
+        manual lengths, scale image, settings — into another folder, and keep
+        working there. The old folder is left exactly as it was."""
+        if not self.masks.savable or not self.n:
+            return
+        current = self._save_folder()
+        start = settings.get("save_dir") or str(current.parent)
+        picked = pick_folder(self, "Save video to folder", start)
+        if not picked:
+            return
+        dest = save_as_target(Path(picked), current)
+        if dest.resolve() == current.resolve():
+            self._save()
+            return
+        try:
+            self._move_to_folder(dest)
+            self._save()
+        except Exception as err:             # noqa: BLE001 - shown to the user
+            QMessageBox.warning(self, "Save as",
+                                f"Could not save to\n{dest}\n\n{err}")
+            return
+        settings.save({"save_dir": str(dest.parent)})
+        QMessageBox.information(self, "Save as",
+                                f"Saved to:\n{dest}\n\nFrom now on Save "
+                                f"writes here. The previous folder is "
+                                f"unchanged:\n{current}")
+
+    def _move_to_folder(self, dest):
+        """Point everything at `dest`: frames linked / copied in, masks and
+        skeletons copied, every later Save written there."""
+        dest.mkdir(parents=True, exist_ok=True)
+        added = ensure_frames_in(dest, self._frames_dir)
+        self.frames.rebase(dest / "frames")
+        copied = self.masks.move_to(dest / "binary", dest / "skel")
+        print(f"[save as] {dest}: {added} frames, {copied} masks copied")
+        self.ds.csv_path = dest / "measurements.csv"
+        self.ds.frames_dir = self._frames_dir = dest / "frames"
+        self._data_dir = dest
+        self.ds.title = self._base_title = f"wormscope — {dest.name}"
+        self._pending_delete.clear()         # those files are in the old folder
+        self._settings_dirty = True
+        self._manual_dirty = True
+        self._update_save_folder()
+
+    def _update_save_folder(self):
+        folder = self._save_folder()
+        if folder is None or not self.masks.savable:
+            self.save_folder_label.setText("not saved (no folder)")
+            self.save_folder_label.setToolTip("")
+            return
+        self.save_folder_label.setText(f"→ {folder.name}")
+        self.save_folder_label.setToolTip(f"Save writes to:\n{folder}\n\n"
+                                          f"Save as… (⌘⇧S / Ctrl+Shift+S) "
+                                          f"picks another folder.")
+        self._update_title()
+
     def _save_scale_image(self, folder):
         """Copy the scale image used in Units… into the folder as scale.png
         and point the calibration at that copy (the original path is kept as
@@ -193,7 +273,11 @@ class IOActionsMixin:
         if dst is None:
             return
         if Path(src).resolve() != dst.resolve():
-            self._calibration["original_image"] = str(src)
+            # A scale.png carried over from another video folder (Save as…)
+            # keeps the original it was made from.
+            if not (Path(src).name == SCALE_FILE
+                    and self._calibration.get("original_image")):
+                self._calibration["original_image"] = str(src)
             print(f"[save] scale image -> {SCALE_FILE}")
         self._calibration["image"] = str(dst)
 
