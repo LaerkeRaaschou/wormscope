@@ -9,6 +9,8 @@ which frame are we on" logic, and inherits the rest from one mixin per area:
     HistoryMixin   wormscope/ui/history.py     undo / redo
     WormListMixin  wormscope/ui/worms.py       add / delete / reassign worms
     SamMixin       wormscope/ui/sam.py         SAM2 point prompts
+    ManualLengthMixin wormscope/ui/manual_length.py  measure length by hand
+    AnnotationModeMixin wormscope/ui/annotation_mode.py  Automatic | Manual view
     IOActionsMixin wormscope/ui/io_actions.py  open, import, units, save, export
     AppMenuMixin   wormscope/ui/app_menu.py    menu bar: SAM2 model, shortcut, updates
 
@@ -22,15 +24,18 @@ import numpy as np
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QMainWindow
 
-from ..config import (ACCEL_METRIC, HIT_RADIUS, KINEMATIC_METRICS, MAX_PLOTS,
-                      SPEED_METRIC)
+from ..config import (ACCEL_METRIC, ANNOTATION_AUTOMATIC, HIT_RADIUS,
+                      KINEMATIC_METRICS, MAX_PLOTS, SPEED_METRIC)
 from ..core.models import Dataset, Worm
 from ..core.utils import find_col
+from ..widgets import ZoomView
+from .annotation_mode import AnnotationModeMixin
 from .app_menu import AppMenuMixin
 from .editing import EditingMixin
 from .history import HistoryMixin
 from .io_actions import IOActionsMixin
 from .layout import LayoutMixin
+from .manual_length import ManualLengthMixin
 from .rendering import RenderMixin
 from .sam import SamMixin
 from .worms import WormListMixin
@@ -40,8 +45,8 @@ WINDOWS: list = []
 
 
 class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
-                 WormListMixin, SamMixin, IOActionsMixin, AppMenuMixin,
-                 QMainWindow):
+                 WormListMixin, SamMixin, ManualLengthMixin,
+                 AnnotationModeMixin, IOActionsMixin, AppMenuMixin, QMainWindow):
     HIT_RADIUS = HIT_RADIUS
 
     def __init__(self, ds: Dataset):
@@ -89,6 +94,9 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
         self._stroke_key = None
         self._pending_delete: set = set()    # files to unlink on Save
         self._settings_dirty = False         # calibration / lock changed since Save
+        self._manual_dirty = False           # manual lengths changed since Save
+        self._measure_drag = None            # (worm, frame, points before a drag)
+        self.annotation_mode = ANNOTATION_AUTOMATIC  # set for real in _finish_setup
 
         self.area_metric = find_col(ds.metric_names, ["area_px", "area"]) or "area_px"
         self.length_metric = find_col(ds.metric_names, ["length_px", "length"]) or "length_px"
@@ -106,13 +114,17 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
         self.plot.set_worm(None)
         self._apply_session(self.ds.session)  # settings saved with this video
         self._update_title()
+        self._set_annotation_mode(self._initial_annotation_mode(self.ds.session),
+                                  remember=False)
         if self.n:
             self.set_frame(0)
             self._start_with_worm()
             # Load the model and embed frame 0 in the background: that is most
             # of the cost of the first SAM click, and there is no reason to make
             # the user wait for it while they are still looking at the video.
-            self._start_sam(warm=True)
+            # Manual mode doesn't need SAM2; switching to Automatic starts it.
+            if not self.manual_mode:
+                self._start_sam(warm=True)
         else:
             self._show_empty_state()
 
@@ -125,6 +137,8 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
         it is the starting state, not an edit."""
         if self.worms:
             self.select_worm(self.worms[0])
+            if self.manual_mode:
+                self._arm_measure_tool()
             return
         w = Worm(obj_id=0)
         self._insert_worm(w)                 # WormListMixin
@@ -138,6 +152,8 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
                   self.export_btn, self.add_btn,
                   self.del_btn, self.id_btn, self.btn_pan, self.btn_draw,
                   self.btn_erase, self.btn_sam_pos, self.btn_sam_neg,
+                  self.btn_measure, self.measure_clear_btn,
+                  self.mode_auto_btn, self.mode_manual_btn,
                   self.outline_btn, self.brush_slider, self.zoom_in_btn,
                   self.zoom_full_btn,
                   self.zoom_out_btn, self.fit_btn,
@@ -180,7 +196,9 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
         self._refresh_sel_skel()
         self._render_overlay()
         self.video.set_selection(worm.centroid(self.frame) if worm else None)
-        bbox = worm.bbox(self.frame) if worm else None
+        # Zoom to the worm wherever its data is — mask or manual line, shown
+        # in this mode or not — so every worm in the list can be found.
+        bbox = self._locate_worm(worm)
         if bbox is not None:
             self.zoomv.frame_bbox(bbox)      # zoom in on the picked worm
         self._update_info()
@@ -190,6 +208,11 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
             self.select_worm(self.worms[row])
 
     def _on_video_click(self, x, y):
+        if self.manual_mode:                 # only the visible data is clickable
+            w = self._worm_at_manual_line(x, y, self.HIT_RADIUS / 3)
+            if w is not None:
+                self.select_worm(w)
+            return
         xi, yi = int(x), int(y)
         # 1) select any worm whose MASK covers the clicked pixel (whole body is
         #    clickable). If bodies overlap, prefer the smaller one.
@@ -229,8 +252,13 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
         if w is None:
             self.info.setText("Select a worm to inspect or edit it.")
             return
-        c = w.centroid(self.frame)
         lines = [f"Worm #{w.obj_id}"]
+        if self.manual_mode:
+            lines.append(self._manual_info_line(w)
+                         or "not measured on this frame")
+            self.info.setText("\n".join(lines))
+            return
+        c = w.centroid(self.frame)
         if c is not None:
             lines.append(f"pos: ({c[0]:.0f}, {c[1]:.0f})")
             scales = self._unit_scales()
@@ -290,6 +318,11 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
             self._zoom_step(-1)
         elif key == Qt.Key.Key_Space:
             self._toggle_play()
+        elif key == Qt.Key.Key_L and self.n:
+            self._arm_measure_tool()         # L: Manual mode + the Measure tool
+        elif (key in (Qt.Key.Key_Backspace, Qt.Key.Key_Delete)
+              and self.zoomv.mode == ZoomView.MODE_MEASURE):
+            self._measure_remove_last()
         elif key == Qt.Key.Key_Left:
             # Normally handled by the window-wide shortcut (LayoutMixin.
             # _build_shortcuts) so a focused slider can't eat it; kept here for
@@ -326,4 +359,4 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
         """True when there is no worm to zoom in on: none is selected, or the
         selected one has no mask on this frame yet (e.g. the empty worm #0 a
         new video starts with). The view then shows the whole frame."""
-        return self.selected is None or self.selected.bbox(self.frame) is None
+        return self._locate_worm(self.selected) is None

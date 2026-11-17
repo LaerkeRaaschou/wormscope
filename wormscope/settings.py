@@ -26,6 +26,7 @@ DEFAULTS = {
     "sam2_device": "",        # "" = auto: cuda -> mps -> cpu
     "check_updates": "on",    # "off" = never look for a newer version
     "last_update_check": "",  # date of the last look (once a day at most)
+    "annotation_mode": "",    # last Automatic / Manual choice ("" = automatic)
 }
 
 

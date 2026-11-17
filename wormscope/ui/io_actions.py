@@ -7,7 +7,9 @@ from PyQt6.QtWidgets import QMessageBox
 from ..core.metrics import plot_specs, unit_scales
 from ..io.export import export_overlay
 from ..io.loaders import build_raw_dataset, load_dataset
-from ..io.session import ensure_frames_in, write_session
+from ..io.manual_lengths import MANUAL_FILE, write_manual_lengths
+from ..io.session import (SCALE_FILE, ensure_frames_in, save_scale_image,
+                          write_session)
 from ..io.writers import save_measurements_plot, write_measurements_csv
 from .calibration_dialog import CalibrationDialog
 from .file_dialogs import pick_folder, pick_video_or_image
@@ -111,7 +113,7 @@ class IOActionsMixin:
         frame = self.frames.get(self.frame) if self.n else None
         dlg = CalibrationDialog(
             self, px_to_um=self.px_to_um, fps=self.fps,
-            state=self._calibration, frame=frame,
+            state=self._calibration_state(), frame=frame,
             frame_shape=frame.shape[:2] if frame is not None else None,
             start_dir=str(start) if start else None)
         if dlg.exec() != CalibrationDialog.DialogCode.Accepted:
@@ -123,13 +125,33 @@ class IOActionsMixin:
         self.plot.set_scales(self._unit_scales())
         self.plot.set_frame(self.frame)
         self._update_info()
+        self._refresh_measure_view()        # manual length in the new units
+
+    def _calibration_state(self):
+        """What the Units… dialog opens with. A scale.png in the video folder
+        is loaded automatically when no other scale image is set (or the one
+        that was set has gone)."""
+        state = dict(self._calibration)
+        img = state.get("image")
+        if img and Path(img).is_file():
+            return state
+        if state.get("source") == "frame" and not img:
+            return state                     # calibrated on a video frame
+        scale = self._data_dir / SCALE_FILE if self._data_dir else None
+        if scale is not None and scale.is_file():
+            state["image"] = str(scale)
+            state["source"] = "file"
+            if img and Path(img).resolve() != scale.resolve():
+                state.pop("line", None)      # drawn on another image
+        return state
 
     # --- saving --------------------------------------------------------------
     def _save(self):
         """Write everything “Continue editing video…” needs to pick up again:
         dirty masks + skeletons (removed files deleted), the frames themselves
-        if they live elsewhere, measurements.csv + plot, and wormscope.json
-        with the settings (calibration, lock edits, corrected frames)."""
+        if they live elsewhere, measurements.csv + plot, manual_lengths.csv,
+        the scale image as scale.png, and wormscope.json with the settings
+        (calibration, lock edits, corrected frames)."""
         if not self.masks.savable:
             return
         folder = self.ds.csv_path.parent
@@ -148,11 +170,32 @@ class IOActionsMixin:
         if save_measurements_plot(folder / "measurements_plot.png",
                                   self.worms, self._plot_specs()):
             print("[save] regenerated measurements_plot.png")
+        n_manual = write_manual_lengths(folder / MANUAL_FILE, self.worms,
+                                        self.ds.idx_to_key, self.px_to_um)
+        if n_manual or (folder / MANUAL_FILE).exists():
+            print(f"[save] {n_manual} manual lengths -> {MANUAL_FILE}")
+        self._save_scale_image(folder)
         write_session(folder, self._session_state())
         self._settings_dirty = False
+        self._manual_dirty = False
         self.save_btn.setEnabled(False)
         self._update_title()
         print("[save] masks, skeletons and measurements.csv written")
+
+    def _save_scale_image(self, folder):
+        """Copy the scale image used in Units… into the folder as scale.png
+        and point the calibration at that copy (the original path is kept as
+        "original_image")."""
+        src = self._calibration.get("image")
+        if not src:
+            return
+        dst = save_scale_image(folder, src)
+        if dst is None:
+            return
+        if Path(src).resolve() != dst.resolve():
+            self._calibration["original_image"] = str(src)
+            print(f"[save] scale image -> {SCALE_FILE}")
+        self._calibration["image"] = str(dst)
 
     # --- session settings (wormscope.json) ----------------------------------
     def _session_state(self):
@@ -162,10 +205,17 @@ class IOActionsMixin:
             if oid in self.by_id:
                 corrected.setdefault(str(oid), []).append(
                     int(self.ds.idx_to_key.get(idx, idx)))
+        dialog = dict(self._calibration)
+        folder = self.ds.csv_path.parent if self.ds.csv_path else None
+        img = dialog.get("image")
+        if img and folder is not None and Path(img).parent.resolve() \
+                == folder.resolve():
+            dialog["image"] = Path(img).name          # relative: folder can move
         return {"frames": "frames",
                 "calibration": {"um_per_px": self.px_to_um, "fps": self.fps,
-                                "dialog": self._calibration},
+                                "dialog": dialog},
                 "lock_edits": self.lock_box.isChecked(),
+                "annotation_mode": self.annotation_mode,
                 "corrected_frames": corrected}
 
     def _apply_session(self, state):
@@ -178,7 +228,10 @@ class IOActionsMixin:
         cal = state.get("calibration") or {}
         self.px_to_um = cal.get("um_per_px") or None
         self.fps = cal.get("fps") or None
-        self._calibration = cal.get("dialog") or {}
+        self._calibration = dict(cal.get("dialog") or {})
+        img = self._calibration.get("image")
+        if img and not Path(img).is_absolute() and self._data_dir is not None:
+            self._calibration["image"] = str(self._data_dir / img)
         self.lock_box.blockSignals(True)
         self.lock_box.setChecked(bool(state.get("lock_edits")))
         self.lock_box.blockSignals(False)
@@ -198,7 +251,8 @@ class IOActionsMixin:
         self._update_title()
 
     def _has_unsaved(self):
-        return bool(self.masks.dirty) or self._settings_dirty
+        return (bool(self.masks.dirty) or self._settings_dirty
+                or self._manual_dirty)
 
     def _write_csv(self):
         write_measurements_csv(self.ds.csv_path, self.worms, self.ds.idx_to_key,

@@ -56,6 +56,11 @@ class WormListMixin:
         though, so an in-memory dataset (the demo, and anything opened without a
         frames/ folder) falls back to the brush rather than arming a tool whose
         first click can only raise a dialog."""
+        if self.manual_mode:
+            # Measuring by hand: a new worm gets the Measure tool, so Add
+            # (N) is all it takes to go on to the next animal.
+            self._arm_measure_tool()
+            return
         use_sam = config.NEW_WORM_TOOL == "sam" and self._frames_dir is not None
         if use_sam:
             self.btn_sam_pos.setChecked(True)
@@ -90,8 +95,11 @@ class WormListMixin:
         w = self.selected
         if w is None:
             return
+        extra = (f"\n\nIts {len(w.manual)} manual length measurement"
+                 f"{'s' if len(w.manual) != 1 else ''} will be deleted too."
+                 if w.manual else "")
         if QMessageBox.question(self, "Delete worm",
-                                f"Delete worm #{w.obj_id} from all frames?") \
+                                f"Delete worm #{w.obj_id} from all frames?{extra}") \
                 != QMessageBox.StandardButton.Yes:
             return
         masks, paths, files = self.masks.pop_worm(w.obj_id)
@@ -101,6 +109,8 @@ class WormListMixin:
         self._hand_edited = {k for k in self._hand_edited if k[0] != w.obj_id}
         self._anchored = {k for k in self._anchored if k[0] != w.obj_id}
         self._remove_worm_obj(w)
+        if w.manual:                         # its manual lengths go with it
+            self._manual_dirty = True
         if self.masks.savable:
             self.save_btn.setEnabled(True)
         self._update_title()
@@ -150,6 +160,8 @@ class WormListMixin:
         self.by_id[new] = w
         row = self.worms.index(w)
         self.list.item(row).setText(f"#{new}")
+        if w.manual:                         # manual lengths follow the worm
+            self._manual_dirty = True
         if self.masks.savable:
             self.save_btn.setEnabled(True)
         self._update_title()

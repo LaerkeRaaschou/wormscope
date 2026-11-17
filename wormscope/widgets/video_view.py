@@ -1,9 +1,10 @@
 """The Video canvas: whole frame + masks, with the zoom viewport rectangle."""
 
-from PyQt6.QtCore import QRectF, Qt, pyqtSignal
-from PyQt6.QtGui import QImage, QPainter, QPen
+from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QImage, QPainter, QPen
 from PyQt6.QtWidgets import QWidget
 
+from ..config import MANUAL_LINE_RGB, MANUAL_OTHER_RGB
 from .colors import PANEL_BG, VIEWPORT_COL
 
 
@@ -18,6 +19,7 @@ class VideoView(QWidget):
         self._img: QImage | None = None
         self._sel = None
         self._viewport = None                # (x0, y0, x1, y1) in image coords
+        self._measure = []                   # [(points, is_selected)] manual lengths
         self._rect: QRectF | None = None
         self._scale = 1.0
         self.setMinimumSize(360, 240)
@@ -28,6 +30,11 @@ class VideoView(QWidget):
 
     def set_selection(self, centroid):
         self._sel = centroid
+        self.update()
+
+    def set_measure_lines(self, lines):
+        """Manual length lines on this frame: [(points, is_selected), ...]."""
+        self._measure = [(list(p), bool(sel)) for p, sel in lines]
         self.update()
 
     def set_viewport(self, rect):
@@ -46,6 +53,14 @@ class VideoView(QWidget):
         ox, oy = (self.width() - dw) / 2, (self.height() - dh) / 2
         self._rect = QRectF(ox, oy, dw, dh)
         p.drawImage(self._rect, self._img)
+        if self._measure:
+            p.setRenderHint(QPainter.RenderHint.Antialiasing)
+            for pts, sel in self._measure:
+                p.setPen(QPen(QColor(*(MANUAL_LINE_RGB if sel else MANUAL_OTHER_RGB)),
+                              2 if sel else 1.2))
+                for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+                    p.drawLine(QPointF(ox + x0 * self._scale, oy + y0 * self._scale),
+                               QPointF(ox + x1 * self._scale, oy + y1 * self._scale))
         if self._viewport is not None:
             x0, y0, x1, y1 = self._viewport
             p.setPen(QPen(VIEWPORT_COL, 2))

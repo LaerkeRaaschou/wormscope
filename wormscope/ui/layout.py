@@ -27,7 +27,8 @@ from PyQt6.QtWidgets import (QAbstractButton, QButtonGroup, QCheckBox, QFrame,
                              QListWidget, QPushButton, QScrollArea, QSlider,
                              QVBoxLayout, QWidget)
 
-from ..config import BRUSH_MAX, BRUSH_MIN, PLAYBACK_FPS, SMOOTH_WINDOW
+from ..config import (ANNOTATION_AUTOMATIC, ANNOTATION_MANUAL, BRUSH_MAX,
+                      BRUSH_MIN, PLAYBACK_FPS, SMOOTH_WINDOW)
 from ..widgets import PlotPanel, VideoView, ZoomView
 from .progress import ProgressPanel
 
@@ -195,6 +196,10 @@ class LayoutMixin:
         self.zoomv.strokeFinished.connect(self._on_stroke_finished)
         self.zoomv.viewportChanged.connect(self._on_viewport_changed)
         self.zoomv.pointAdded.connect(self._on_sam_point)
+        self.zoomv.measureAdded.connect(self._on_measure_added)
+        self.zoomv.measureMoved.connect(self._on_measure_moved)
+        self.zoomv.measureRemoved.connect(self._on_measure_removed)
+        self.zoomv.measureMoveFinished.connect(self._on_measure_move_finished)
 
         self.tool_group = QButtonGroup(self)
         self.tool_group.setExclusive(True)
@@ -216,11 +221,42 @@ class LayoutMixin:
                                     "until you switch back.\n"
                                     "Shift+click for a single worm point.")
         self.btn_sam = self.btn_sam_pos          # the default SAM tool
+        # Manual length: click points along the selected worm.
+        self.btn_measure = QPushButton("Measure")
+        self.btn_measure.setToolTip(
+            "Measure the selected worm's length by hand (L): click points "
+            "along it, head to tail.\nDrag a point to move it, click on the "
+            "line to insert one,\nShift+click a point or Backspace to remove "
+            "one. Right-drag pans.")
+        self.measure_clear_btn = QPushButton("Clear")
+        self.measure_clear_btn.setToolTip("Remove the selected worm's manual "
+                                          "line on this frame")
+        self.measure_clear_btn.clicked.connect(self._measure_clear)
+        self.measure_label = QLabel("—")
+        # Annotation mode: which data (and tools) the window shows.
+        self.mode_group = QButtonGroup(self)
+        self.mode_group.setExclusive(True)
+        self.mode_auto_btn = QPushButton("Automatic")
+        self.mode_auto_btn.setToolTip(
+            "Segmentation: masks, SAM2 and brush tools, area / length / speed "
+            "plots.\nManual length lines are hidden (and kept).")
+        self.mode_manual_btn = QPushButton("Manual")
+        self.mode_manual_btn.setToolTip(
+            "Manual length: click points along the worm.\nMasks and their "
+            "metrics are hidden (and kept). The worm list shows every worm.")
+        for b, m in ((self.mode_auto_btn, ANNOTATION_AUTOMATIC),
+                     (self.mode_manual_btn, ANNOTATION_MANUAL)):
+            b.setCheckable(True)
+            b.clicked.connect(lambda _c, m=m: self._set_annotation_mode(m))
+            self.mode_group.addButton(b)
+        self.measure_label.setToolTip("Manual length of the selected worm on "
+                                      "this frame")
         for b, mode in ((self.btn_pan, ZoomView.MODE_PAN),
                         (self.btn_draw, ZoomView.MODE_DRAW),
                         (self.btn_erase, ZoomView.MODE_ERASE),
                         (self.btn_sam_pos, ZoomView.MODE_SAM_POS),
-                        (self.btn_sam_neg, ZoomView.MODE_SAM_NEG)):
+                        (self.btn_sam_neg, ZoomView.MODE_SAM_NEG),
+                        (self.btn_measure, ZoomView.MODE_MEASURE)):
             b.setCheckable(True)
             b.clicked.connect(lambda _c, m=mode: self._set_mode(m))
             self.tool_group.addButton(b)
@@ -302,6 +338,8 @@ class LayoutMixin:
         # so they can breathe in the narrow column.
         _compact(self.btn_pan, self.btn_draw, self.btn_erase, self.outline_btn,
                  self.btn_sam_pos, self.btn_sam_neg, self.sam_mask_btn,
+                 self.btn_measure, self.measure_clear_btn,
+                 self.mode_auto_btn, self.mode_manual_btn,
                  self.sam_clear_btn, self.sam_run_btn, self.sam_again_btn,
                  self.zoom_out_btn, self.zoom_in_btn, self.fit_btn,
                  self.zoom_full_btn, self.undo_btn, self.redo_btn, self.save_btn)
@@ -331,13 +369,22 @@ class LayoutMixin:
     def _zoom_controls(self, brush_lbl):
         """The Zoom panel's controls as a narrow column down the left side.
 
-        Top to bottom: the view tools everybody needs (Pan, Outline), then three
-        small boxes — "Zoom", "AI edits" (SAM2 prompts and tracking) and
-        "Manual edits" (brush and what happens to the frames you painted) —
+        Top to bottom: the Automatic | Manual switch (ui/annotation_mode.py,
+        it shows one mode's boxes and hides the other's), the view tools
+        everybody needs (Pan, Outline), then four
+        small boxes — "Zoom", "Manual length" (the Measure tool), "AI edits"
+        (SAM2 prompts and tracking) and "Manual edits" (brush and what happens
+        to the frames you painted) —
         then undo / redo / save and progress. Kept in a column so the canvas gets the height."""
         col = QVBoxLayout()
         col.setContentsMargins(0, 0, 0, 0)
         col.setSpacing(ROW_SPACING + 2)
+
+        # --- annotation mode: Automatic | Manual ---
+        mode = _tight(QHBoxLayout())
+        mode.addWidget(self.mode_auto_btn, 1)
+        mode.addWidget(self.mode_manual_btn, 1)
+        col.addLayout(mode)
 
         # --- view: always visible, at the top ---
         top = _tight(QHBoxLayout())
@@ -356,8 +403,17 @@ class LayoutMixin:
         g.addWidget(self.zoom_full_btn, 1, 1)
         col.addWidget(zbx)
 
+        # --- Manual length: the Measure tool, Clear, and the result ---
+        self.measure_box = ml = self._tool_box("Manual length")[0]
+        g = ml.layout()
+        g.addWidget(self.btn_measure, 0, 0)
+        g.addWidget(self.measure_clear_btn, 0, 1)
+        g.addWidget(self.measure_label, 1, 0, 1, 2)
+        col.addWidget(ml)
+
         # --- AI edits: SAM2 prompts, then tracking ---
-        ai, g = self._tool_box("AI edits")
+        self.ai_box = ai = self._tool_box("AI edits")[0]
+        g = ai.layout()
         g.addWidget(self.btn_sam_pos, 0, 0)
         g.addWidget(self.btn_sam_neg, 0, 1)
         g.addWidget(self.sam_clear_btn, 1, 0, 1, 2)
@@ -369,7 +425,8 @@ class LayoutMixin:
         col.addWidget(ai)
 
         # --- Manual edits: Draw / Erase side by side, brush beneath ---
-        man, g = self._tool_box("Manual edits")
+        self.brush_box = man = self._tool_box("Manual edits")[0]
+        g = man.layout()
         g.addWidget(self.btn_draw, 0, 0)
         g.addWidget(self.btn_erase, 0, 1)
         brush = _tight(QHBoxLayout())
@@ -475,8 +532,11 @@ class LayoutMixin:
         # the curve is what matters, and it stays readable whatever the units.
         # Hovering a curve shows the real value.
         self.plot.set_normalized({self.area_metric, self.length_metric})
+        self.plot.set_manual_metric(self.length_metric)   # manual lengths: ◆
         self.plot.setToolTip("Area and length are shown ÷ their median — "
                              "hover a curve for the real value.\n"
+                             "Orange diamonds on the length plot are the "
+                             "manual lengths.\n"
                              "Click or drag to scrub through frames.")
         self.plot.frameSelected.connect(self.set_frame)
         self.smooth_box = QCheckBox("Smooth")

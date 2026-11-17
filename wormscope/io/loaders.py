@@ -7,6 +7,8 @@ Expected layout of a per-video folder::
         binary/              # worm{id:02d}_{stem}.png -> per-worm masks (EDITABLE)
         skel/                # worm{id:02d}_{stem}.png -> skeletons (recomputed)
         measurements.csv     # per-frame metrics -> Plots panel (rewritten on Save)
+        manual_lengths.csv   # manual length points per worm + frame (optional)
+        scale.png            # the scale image used for calibration (optional)
         wormscope.json       # calibration, lock edits, corrected frames (optional)
 
 This is exactly what Save writes (see :mod:`wormscope.io.session`), so any
@@ -27,6 +29,7 @@ from ..core.geometry import mask_stats
 from ..core.models import Dataset, FrameSource, MaskStore, Worm
 from ..core.utils import (find_col, last_int, list_images, sort_by_frame_number,
                           to_num)
+from .manual_lengths import MANUAL_FILE, read_manual_lengths
 from .session import SESSION_FILE, ensure_frames_in, read_session
 
 
@@ -205,11 +208,27 @@ def load_dataset(data_dir: Path) -> Dataset | None:
     if not names:
         names = ["area_px", "length_px"]
         seed_metrics_from_masks(worms, masks, names)
+    attach_manual_lengths(worms, read_manual_lengths(
+        data_dir / MANUAL_FILE, key_to_idx, n))
     idx_to_key = {idx: k for k, idx in key_to_idx.items()}
     return Dataset(frames, worms, names[:MAX_PLOTS], masks, idx_to_key,
                    data_dir / "measurements.csv", f"wormscope — {data_dir.name}",
                    frames_dir=find_frames_dir(data_dir),
                    session=read_session(data_dir))
+
+
+def attach_manual_lengths(worms, manual):
+    """Put manual measurements ({worm_id: {idx: points}}) on the worms. A
+    worm that was only measured by hand (no masks yet) is created, so it shows
+    up in the list and can be segmented later under the same ID."""
+    by_id = {w.obj_id: w for w in worms}
+    for wid in sorted(manual):
+        w = by_id.get(wid)
+        if w is None:
+            w = by_id[wid] = Worm(obj_id=wid)
+            worms.append(w)
+        w.manual.update(manual[wid])
+    worms.sort(key=lambda w: w.obj_id)
 
 
 def has_saved_work(folder: Path) -> bool:
@@ -219,6 +238,7 @@ def has_saved_work(folder: Path) -> bool:
     binary = folder / "binary"
     return ((binary.is_dir() and any(binary.iterdir()))
             or (folder / "measurements.csv").is_file()
+            or (folder / MANUAL_FILE).is_file()
             or (folder / SESSION_FILE).is_file())
 
 

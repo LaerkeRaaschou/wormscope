@@ -5,7 +5,7 @@ leave the GUI in a consistent, visible state (the mask helpers below do that for
 you). Keep new actions symmetric — whatever redo does, undo must exactly undo.
 """
 
-from ..config import UNDO_LIMIT
+from ..config import ANNOTATION_AUTOMATIC, UNDO_LIMIT
 
 
 class HistoryMixin:
@@ -39,6 +39,8 @@ class HistoryMixin:
 
     def _restore_mask(self, wid, idx, arr):
         """Set a worm's mask for one frame and show the result (for undo/redo)."""
+        if self.manual_mode:                 # masks are only shown in Automatic
+            self._set_annotation_mode(ANNOTATION_AUTOMATIC)
         self.masks.set(wid, idx, arr.copy())
         w = self.by_id.get(wid)
         if w is not None:

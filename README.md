@@ -224,6 +224,74 @@ recalibrating never changes the data. The scale image must have the same pixel
 size as the video. The dialog warns when its dimensions differ. Reopening the
 dialog keeps the image, the line and the known length.
 
+On Save, the scale image is copied into the video folder as `scale.png`
+(converted to PNG; 16-bit greyscale stays 16-bit). `wormscope.json` then
+points at that copy (and keeps the original path as `original_image`), so
+the folder carries its own calibration evidence and can be moved. Units…
+opens that `scale.png` automatically whenever no other scale image is set (or
+the one that was set has gone). When the
+calibration was drawn on a video frame (“use the current frame”), no
+`scale.png` is written: that frame is already in `frames/`.
+
+## Automatic and Manual mode
+
+One video folder holds both kinds of annotation side by side: the masks and
+their metrics (`binary/`, `skel/`, `measurements.csv`) and the manual length
+lines (`manual_lengths.csv`). Save always writes both. The **Automatic |
+Manual** switch at the top of the Zoom controls only decides what you see and
+edit:
+
+| | Automatic | Manual |
+|---|---|---|
+| Video / Zoom | masks, skeleton, SAM2 points | raw frames + manual lines |
+| Tools | AI edits, brush, Outline | Measure, Clear |
+| Plots | area, length, speed, acceleration | manual length only (real units) |
+| Info | mask metrics | manual length |
+
+The worm list always shows **every** worm. Selecting one moves the Zoom view to
+where it is, using its mask or its manual line on this frame (or on the nearest
+frame that has either), even when that data is hidden in the current mode. Undo
+switches to the mode of whatever it changes, so you can see the undo happen.
+The mode is saved per video in `wormscope.json`. A video opened for the first
+time starts in the last mode you used (or in Manual when it has only manual
+lengths). SAM2 is only loaded in Automatic mode.
+
+## Measuring length by hand
+
+**Measure** (Manual mode, box *Manual length*, key **L**, which also switches to
+Manual) measures the selected worm by clicking points along it, head to tail,
+in the Zoom view. The length is the sum
+of the straight segments between the points.
+
+* click: add a point at the end of the line
+* click on the line: insert a point into that segment
+* drag a point: move it
+* Shift+click a point, or Backspace: remove a point
+* right-drag: pan, as in every tool
+* **Clear**: remove this worm's line on this frame
+
+There is one line per worm per frame, and every change can be undone. No mask
+is needed: you can measure a folder of raw frames by hand and segment it with
+SAM2 later. The worm IDs in the list are what connect the two, so use
+**Reassign ID** if they need to match. **Add** (N) keeps the Measure tool, so
+measuring several animals is Add, then click along the worm, repeated. Lines
+are drawn in orange (the selected worm) on both the Video and the Zoom view,
+and the plot shows the manual length over the frames you measured. Clicking a
+line on the Video selects its worm.
+
+Save writes `manual_lengths.csv`, one row for each worm and frame you measured
+(frames nobody measured have no row):
+
+```
+frame,worm_id,length_px,length_um,n_points,points
+12,1,412.71,165.08,7,"[[103.0, 88.5], [140.25, 95.0], ...]"
+```
+
+`frame` and `worm_id` match `measurements.csv`, so join the two files on
+(frame, worm_id) to compare manual with automatic length. `length_um` is empty
+until Units… is calibrated and is recomputed from the points on every Save.
+`points` are image pixels and are what is read back when you reopen the video.
+
 ## Reading the plots
 
 Four stacked curves for the selected worm: **area**, **length**, **speed** and
@@ -259,6 +327,8 @@ data/<video>/
     skel/              worm{id:02d}_{stem}.png -> skeletons (recomputed on save)
     measurements.csv   per-frame metrics       -> Plots panel (rewritten on Save)
     measurements_plot.png
+    manual_lengths.csv manual length points + lengths per worm/frame (optional)
+    scale.png          the scale image used for calibration (optional)
     wormscope.json     calibration, lock edits, frames you corrected (optional)
 ```
 
@@ -299,12 +369,14 @@ wormscope/
 │   ├── geometry.py        skeletonize, mask_stats, brush stamping
 │   ├── kinematics.py      centroid speed / acceleration
 │   ├── metrics.py         per-worm metric refresh + unit scaling
+│   ├── manual.py          manual length: polyline length, point / segment hit-tests
 │   └── utils.py           moving average, filename parsing, CSV column matching
 ├── io/                    getting data in and out
 │   ├── loaders.py         load_dataset / build_raw_dataset and their helpers
 │   ├── demo.py            make_demo — synthetic dataset used by the tests
 │   ├── writers.py         measurements.csv + measurements_plot.png
-│   ├── session.py         wormscope.json + putting the frames in the saved folder
+│   ├── session.py         wormscope.json, scale.png + putting the frames in the saved folder
+│   ├── manual_lengths.py  manual_lengths.csv: write on Save, read on reopen
 │   └── export.py          corrected-overlay .mp4 (PNG fallback)
 ├── segmentation/          swappable segmentation backends
 │   ├── __init__.py        SEGMENTER_FACTORY / make_segmenter
@@ -329,6 +401,8 @@ wormscope/
     ├── sam_worker.py       SAM2 on a worker thread: job queue + signals
     ├── worms.py           add / delete / reassign worm IDs
     ├── sam.py             SAM2 point prompts and propagation
+    ├── manual_length.py   Measure tool: manual length points, undo, display
+    ├── annotation_mode.py Automatic | Manual: which data and tools are shown
     ├── io_actions.py      open, import, units, save, export
     └── calibration_dialog.py  Units…: scale image + line -> µm/pixel, and fps
 tests/
@@ -342,6 +416,7 @@ tests/
 ├── test_plots.py              median-normalized curves, hover read-out, % progress
 └── test_editing_tools.py      Shift swaps draw/erase, arrow keys, N, removed buttons
 wormscope_gui3.py          the original single-file version, kept for reference
+scripts/check_manual_length.py  end-to-end check: Measure tool, manual_lengths.csv, scale.png
 ```
 
 ## Where to make a change
@@ -452,7 +527,9 @@ saves in both, and compares every file written to disk.
 | ← / → | previous / next frame — from anywhere in the window |
 | Shift+← / → | jump ten frames |
 | Space | play / pause |
-| N | new worm (armed with the + tool, ready to click) |
+| N | new worm (armed with the + tool, ready to click; Measure in Manual mode) |
+| L | Manual mode + the Measure tool: click points along the worm |
+| Backspace / Delete | remove the last manual-length point (Measure tool) |
 | Shift+click | flip the SAM point's sign for that one click |
 | Shift+drag | Draw erases / Erase draws, for that one stroke |
 | + / − | zoom the editing canvas in / out (also in the Units… dialog) |

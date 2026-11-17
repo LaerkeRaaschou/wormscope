@@ -12,6 +12,14 @@ class EditingMixin:
     # --- tool state ----------------------------------------------------------
     def _set_mode(self, mode):
         self.zoomv.mode = mode
+        if mode == ZoomView.MODE_MEASURE:
+            if self._measure_ready():
+                self.info.setText(
+                    f"Worm #{self.selected.obj_id} — measure length\n"
+                    "Click points along the worm, head to tail. Drag a point "
+                    "to move it, click on the line to insert one, Shift+click "
+                    "a point (or Backspace) to remove it.")
+            return
         if mode != ZoomView.MODE_PAN and self.selected is None:
             self.info.setText("Pick a worm first, then Draw / Erase in the Zoom view.")
 

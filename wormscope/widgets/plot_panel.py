@@ -16,9 +16,12 @@ import numpy as np
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QLabel
 
-from ..config import (DARK_BLUE, GRIDCOL, PANEL, PLOT_AX_BG, PLOT_DOT,
-                      PLOT_LINE, SMOOTH_WINDOW)
+from ..config import (DARK_BLUE, GRIDCOL, MANUAL_LINE_RGB, PANEL, PLOT_AX_BG,
+                      PLOT_DOT, PLOT_LINE, SMOOTH_WINDOW)
+from ..core.manual import manual_lengths
 from ..core.utils import moving_average
+
+MANUAL_COLOR = tuple(c / 255 for c in MANUAL_LINE_RGB)
 
 try:
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
@@ -39,6 +42,9 @@ if HAVE_MPL:
             self.smooth = False
             self.scales = {}                 # metric -> (factor, ylabel)
             self.normalized = set()          # metrics drawn ÷ their median
+            self.manual_metric = None        # axis that also shows manual lengths
+            self.show_auto = True            # mask metrics (Automatic mode)
+            self.show_manual = False         # manual lengths (Manual mode)
             self._drawn = []                 # per-axis {frame: plotted-y}
             self._raw = []                   # per-axis {frame: real value}
             self._units = []                 # per-axis unit label for the tip
@@ -73,7 +79,10 @@ if HAVE_MPL:
                                   va="center", transform=self.axes[0].transAxes,
                                   fontsize=9, color=GRIDCOL)
             elif self.metrics:
-                self.axes[-1].set_xlabel("frame", fontsize=8, color=DARK_BLUE)
+                for ax in self.axes:
+                    if ax.get_visible() and ax.get_subplotspec().rowspan.stop \
+                            == len(self.axes):   # the bottom-most visible plot
+                        ax.set_xlabel("frame", fontsize=8, color=DARK_BLUE)
             self.dots = [None] * len(self.axes)
             self._tips = [None] * len(self.axes)   # ax.clear() dropped them
             self.draw_idle()
@@ -97,6 +106,32 @@ if HAVE_MPL:
             self.normalized = set(names or ())
             self.set_worm(self.worm)
 
+        def set_manual_metric(self, name):
+            """Overlay the worm's manual length measurements (orange diamonds)
+            on this metric's axis — the automatic length — in the same units
+            and the same normalisation, so the two can be compared directly."""
+            self.manual_metric = name
+            self.set_worm(self.worm)
+
+        def set_view(self, show_auto=True, show_manual=False):
+            """Which data to draw: the mask metrics (Automatic mode), the
+            manual lengths (Manual mode), or both."""
+            self.show_auto, self.show_manual = bool(show_auto), bool(show_manual)
+            self._apply_view_layout()
+            self.set_worm(self.worm)
+
+        def _apply_view_layout(self):
+            """Manual mode has one meaningful plot — the manual length — so it
+            gets the whole panel; Automatic mode restores the stacked plots."""
+            n = len(self.axes)
+            solo = (not self.show_auto and self.manual_metric in self.metrics)
+            gs = self.axes[0].get_subplotspec().get_gridspec()
+            for i, ax in enumerate(self.axes):
+                keep = (not solo) or self.metrics[i] == self.manual_metric
+                ax.set_visible(keep)
+                ax.set_subplotspec(gs[:, 0] if solo and keep else gs[i, 0])
+                ax.tick_params(labelbottom=(solo and keep) or i == n - 1)
+
         def set_worm(self, worm):
             self.worm = worm
             self._blank()
@@ -111,13 +146,27 @@ if HAVE_MPL:
                 self._units[i] = label
                 series = worm.metrics.get(name, {})
                 fs = [f for f in sorted(series) if series[f] == series[f]]
+                manual = (manual_lengths(worm) if name == self.manual_metric
+                          and self.show_manual else {})
+                if not self.show_auto:
+                    self._draw_manual_only(i, ax, name, label, factor, manual)
+                    continue
                 if not fs:
-                    ax.text(0.5, 0.5, "no data yet", ha="center", va="center",
-                            transform=ax.transAxes, fontsize=8, color=GRIDCOL)
+                    if manual:
+                        mf = sorted(manual)
+                        ax.plot(mf, [manual[f] * factor for f in mf], "D",
+                                color=MANUAL_COLOR, markersize=4, zorder=4,
+                                label="manual")
+                        ax.legend(fontsize=6, loc="best", frameon=False)
+                    else:
+                        ax.text(0.5, 0.5, "no data yet", ha="center",
+                                va="center", transform=ax.transAxes,
+                                fontsize=8, color=GRIDCOL)
                     continue
                 real = [series[f] * factor for f in fs]
                 self._raw[i] = dict(zip(fs, real))    # what the tooltip reports
                 ys = real
+                med = None
                 if name in self.normalized:
                     med = float(np.median(real))
                     # A zero or non-finite median means there is nothing to
@@ -131,10 +180,41 @@ if HAVE_MPL:
                                    alpha=0.7, zorder=1)
                 if self.smooth:
                     ys = moving_average(ys, SMOOTH_WINDOW)
-                ax.plot(fs, ys, color=PLOT_LINE, lw=1.3)
+                ax.plot(fs, ys, color=PLOT_LINE, lw=1.3,
+                        label="auto" if manual else None)
                 self._drawn[i] = dict(zip(fs, ys))    # what the dot should track
+                if manual:
+                    mf = sorted(manual)
+                    div = med if (med is not None and med == med and med != 0
+                                  and name in self.normalized) else 1.0
+                    ax.plot(mf, [manual[f] * factor / div for f in mf], "D",
+                            color=MANUAL_COLOR, markersize=4, zorder=4,
+                            label="manual")
+                    ax.legend(fontsize=6, loc="best", frameon=False)
             self._place_dots()
             self.draw_idle()
+
+        def _draw_manual_only(self, i, ax, name, label, factor, manual):
+            """Manual mode: the length axis shows the manual lengths in real
+            units (no normalisation); the mask metrics are hidden."""
+            if name != self.manual_metric:
+                ax.text(0.5, 0.5, "automatic data hidden (Manual mode)",
+                        ha="center", va="center", transform=ax.transAxes,
+                        fontsize=7, color=GRIDCOL)
+                return
+            ax.set_ylabel(f"manual {label}", fontsize=8, color=DARK_BLUE)
+            self._units[i] = f"manual {label}"
+            if not manual:
+                ax.text(0.5, 0.5, "not measured yet", ha="center",
+                        va="center", transform=ax.transAxes, fontsize=8,
+                        color=GRIDCOL)
+                return
+            mf = sorted(manual)
+            ys = [manual[f] * factor for f in mf]
+            ax.plot(mf, ys, "-D", color=MANUAL_COLOR, lw=1, markersize=4,
+                    zorder=4)
+            self._raw[i] = dict(zip(mf, ys))
+            self._drawn[i] = dict(zip(mf, ys))
 
         def set_frame(self, f):
             self._frame = f
@@ -299,4 +379,10 @@ else:
             pass
 
         def set_normalized(self, names):
+            pass
+
+        def set_manual_metric(self, name):
+            pass
+
+        def set_view(self, show_auto=True, show_manual=False):
             pass

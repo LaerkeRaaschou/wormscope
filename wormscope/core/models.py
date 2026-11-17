@@ -19,6 +19,9 @@ class Worm:
     centroids: dict[int, tuple[float, float]] = field(default_factory=dict)
     metrics: dict[str, dict[int, float]] = field(default_factory=dict)
     bboxes: dict[int, tuple[int, int, int, int]] = field(default_factory=dict)
+    # Manual length measurements: frame -> [(x, y), ...] points clicked along
+    # the worm (see core/manual.py). Independent of the masks.
+    manual: dict[int, list[tuple[float, float]]] = field(default_factory=dict)
 
     def centroid(self, frame: int):
         return self.centroids.get(frame)

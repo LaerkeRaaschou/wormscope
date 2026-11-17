@@ -22,6 +22,8 @@ MASK_UNSEL_RGB = (120, 165, 215)     # unselected worms
 MASK_SEL_RGB = (26, 58, 120)         # selected worm
 MASK_ALPHA = 0.5                     # overlay opacity
 SKEL_RGB = (230, 60, 60)             # selected worm's skeleton
+MANUAL_LINE_RGB = (255, 140, 0)      # manual length line, selected worm
+MANUAL_OTHER_RGB = (255, 200, 120)   # manual length lines of the other worms
 
 PANEL_BG_RGB = (214, 224, 236)       # letterbox behind the image
 VIEWPORT_RGB = (255, 210, 90)        # zoom-region rectangle drawn on the video
@@ -44,6 +46,11 @@ PAN_STEP = 0.15                      # one pan-key step, as a fraction of the vi
 UNDO_LIMIT = 100                       # how many actions the undo stack keeps
 HIT_RADIUS = 45                        # px: centroid fallback when clicking a worm
 BRUSH_MIN, BRUSH_MAX, BRUSH_DEFAULT = 2, 40, 8
+MANUAL_GRAB_PX = 7                     # screen px: grabbing a manual-length point
+MANUAL_METRIC = "manual_length"        # manual length series in the plots
+MANUAL_BBOX_PAD = 10                   # px around a manual line when zooming to it
+# Annotation modes (ui/annotation_mode.py): which data the window shows
+ANNOTATION_AUTOMATIC, ANNOTATION_MANUAL = "automatic", "manual"
 # Default tool when new worm
 NEW_WORM_TOOL = "sam"
 

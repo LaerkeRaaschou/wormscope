@@ -10,6 +10,8 @@ After Save, a video folder is self-contained — exactly what
         skel/                # worm{id:02d}_{stem}.png  skeletons
         measurements.csv     # per-frame metrics
         measurements_plot.png
+        manual_lengths.csv   # manual length measurements (when there are any)
+        scale.png            # the scale image used to calibrate (Units…)
         wormscope.json       # calibration, lock edits, frames you corrected
 
 Frames are hard-linked when the source is on the same disk (no extra space,
@@ -25,6 +27,7 @@ from ..core.utils import list_images, sort_by_frame_number
 
 SESSION_FILE = "wormscope.json"
 SESSION_VERSION = 1
+SCALE_FILE = "scale.png"
 
 
 def read_session(folder) -> dict:
@@ -49,6 +52,38 @@ def write_session(folder, state: dict):
     tmp = folder / (SESSION_FILE + ".tmp")
     tmp.write_text(json.dumps({"version": SESSION_VERSION, **state}, indent=2))
     os.replace(tmp, folder / SESSION_FILE)
+
+
+def save_scale_image(folder, source) -> Path | None:
+    """Put the calibration's scale image in the video folder as scale.png, so
+    the folder keeps the image its µm/pixel was measured on. Converted to PNG
+    when it is another format; left alone when `source` already is that file.
+    Returns the path of scale.png, or None when `source` can't be read."""
+    folder = Path(folder)
+    dst = folder / SCALE_FILE
+    source = Path(source)
+    if not source.is_file():
+        return dst if dst.is_file() else None
+    if dst.exists() and source.resolve() == dst.resolve():
+        return dst
+    folder.mkdir(parents=True, exist_ok=True)
+    tmp = folder / (SCALE_FILE + ".tmp.png")
+    try:
+        from PIL import Image
+        with Image.open(source) as im:
+            im.save(tmp, format="PNG")       # keeps 16-bit grey where PNG can
+    except Exception:                        # noqa: BLE001 - try the loader
+        try:
+            from PIL import Image
+
+            from .loaders import load_image_rgb
+            Image.fromarray(load_image_rgb(source)).save(tmp, format="PNG")
+        except Exception as err:             # noqa: BLE001
+            print(f"[session] could not save {source} as {SCALE_FILE}: {err}")
+            tmp.unlink(missing_ok=True)
+            return dst if dst.is_file() else None
+    os.replace(tmp, dst)
+    return dst
 
 
 def _inside(path: Path, folder: Path) -> bool:

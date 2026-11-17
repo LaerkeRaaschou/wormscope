@@ -24,14 +24,16 @@ class RenderMixin:
         sel_id = self.selected.obj_id if self.selected else None
         raw = self.frames.get(self.frame)
         base = raw.copy()                                # uint8, don't touch cache
-        blend_all_masks(base, self.worms, self.masks, self.frame, sel_id,
-                        self.outline_only)
+        if not self.manual_mode:     # Manual mode: raw frames + manual lines only
+            blend_all_masks(base, self.worms, self.masks, self.frame, sel_id,
+                            self.outline_only)
         self._overlay = base
         self.video.set_frame(np_to_qimage(base))         # video: raw + masks only
 
         zoom_arr, owned = base, False    # the zoom shares the video's pixels
 
-        extras = with_extras and self.selected is not None and not self.timer.isActive()
+        extras = (with_extras and self.selected is not None
+                  and not self.timer.isActive() and not self.manual_mode)
         if extras and self._sel_skel is not None and self._sel_skel.any():
             if not owned:
                 zoom_arr, owned = base.copy(), True
@@ -46,12 +48,13 @@ class RenderMixin:
                     stamp_marker(zoom_arr, px, py, col)
         h, w = base.shape[:2]
         self.zoomv.set_image(np_to_qimage(zoom_arr), w, h)
+        self._refresh_measure_view()             # ManualLengthMixin
 
     def _refresh_sel_skel(self):
         """Selected worm's skeleton for the current frame (from skel/ or a live
         recompute), skipped during playback to keep stepping snappy."""
         self._sel_skel = None
-        if self.selected is None or self.timer.isActive():
+        if self.selected is None or self.timer.isActive() or self.manual_mode:
             return
         self._sel_skel = self.masks.skel(self.selected.obj_id, self.frame)
 
@@ -61,7 +64,7 @@ class RenderMixin:
         self._render_overlay()
 
     def _fit_view(self):
-        bbox = self.selected.bbox(self.frame) if self.selected else None
+        bbox = self._locate_worm(self.selected)
         if bbox is not None:
             self.zoomv.frame_bbox(bbox)
         else:
