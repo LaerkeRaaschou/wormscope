@@ -5,7 +5,9 @@ GUI keeps working. Both variants expose the same five setters
 (``set_worm``, ``set_frame``, ``set_smooth``, ``set_scales``,
 ``set_normalized``) plus the ``frameSelected`` signal.
 
-Metrics named in ``set_normalized`` are drawn divided by their own median, so
+By default every curve shows real values (px, or µm once calibrated). The
+"÷ median" checkbox names area and length in ``set_normalized``: those are
+then drawn divided by their own median, so
 area and length become "how much bigger / smaller than usual is the worm right
 now" — a shape you can read at a glance, and one that survives an arbitrary
 change of units. The real number is never lost: hover the curve and it appears
@@ -210,10 +212,19 @@ if HAVE_MPL:
                         color=GRIDCOL)
                 return
             mf = sorted(manual)
-            ys = [manual[f] * factor for f in mf]
+            real = [manual[f] * factor for f in mf]
+            ys = real
+            if name in self.normalized:      # ÷ median, as for the auto curve
+                med = float(np.median(real))
+                if med == med and med != 0:
+                    ys = [v / med for v in real]
+                    ax.set_ylabel(f"manual {label} / median", fontsize=8,
+                                  color=DARK_BLUE)
+                    ax.axhline(1.0, color=GRIDCOL, lw=0.8, ls="--",
+                               alpha=0.7, zorder=1)
             ax.plot(mf, ys, "-D", color=MANUAL_COLOR, lw=1, markersize=4,
                     zorder=4)
-            self._raw[i] = dict(zip(mf, ys))
+            self._raw[i] = dict(zip(mf, real))     # the tooltip: real value
             self._drawn[i] = dict(zip(mf, ys))
 
         def set_frame(self, f):

@@ -146,3 +146,10 @@ class EditingMixin:
     def _toggle_smooth(self, on):
         self.plot.set_smooth(on)
         self.plot.set_frame(self.frame)
+
+    def _toggle_median(self, on):
+        """÷ median: area and length relative to their own median (on) or in
+        px / µm (off, the default). Display only."""
+        self.plot.set_normalized({self.area_metric, self.length_metric}
+                                 if on else set())
+        self.plot.set_frame(self.frame)

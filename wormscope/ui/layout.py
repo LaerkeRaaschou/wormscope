@@ -540,21 +540,25 @@ class LayoutMixin:
     # --- Plots ---------------------------------------------------------------
     def _build_plots_panel(self):
         self.plot = PlotPanel(self.plot_metrics)
-        # Area and length are drawn relative to their own median: the shape of
-        # the curve is what matters, and it stays readable whatever the units.
-        # Hovering a curve shows the real value.
-        self.plot.set_normalized({self.area_metric, self.length_metric})
+        # Real values (px, or µm once calibrated) by default; "÷ median"
+        # draws area and length relative to their own median instead.
+        self.plot.set_normalized(set())
         self.plot.set_manual_metric(self.length_metric)   # manual lengths: ◆
-        self.plot.setToolTip("Area and length are shown ÷ their median — "
-                             "hover a curve for the real value.\n"
-                             "Orange diamonds on the length plot are the "
-                             "manual lengths.\n"
+        self.plot.setToolTip("Hover a curve for its value.\n"
                              "Click or drag to scrub through frames.")
         self.plot.frameSelected.connect(self.set_frame)
         self.smooth_box = QCheckBox("Smooth")
         self.smooth_box.setToolTip(f"Moving-average smoothing of the curves "
                                    f"(window {SMOOTH_WINDOW}) — display only")
         self.smooth_box.toggled.connect(self._toggle_smooth)
+        self.median_box = QCheckBox("÷ median")
+        self.median_box.setToolTip(
+            "Draw area and length divided by their own median, so the curve "
+            "sits around 1 and drastic changes (a worm that doubles, a bad "
+            "mask) stand out whatever the units.\nOff: the real values in px "
+            "(or µm once calibrated). Hovering always shows the real value. "
+            "Display only.")
+        self.median_box.toggled.connect(self._toggle_median)
         self.units_btn = QPushButton("Units…")
         self.units_btn.setToolTip("Calibrate: draw a line on a scale image to "
                                   "set µm/pixel, and set fps, to show metrics "
@@ -566,6 +570,7 @@ class LayoutMixin:
         self.refresh_btn.clicked.connect(self._refresh_plots)
         prow = QHBoxLayout()
         prow.addWidget(self.smooth_box)
+        prow.addWidget(self.median_box)
         prow.addWidget(self.units_btn)
         prow.addStretch()
         prow.addWidget(self.refresh_btn)

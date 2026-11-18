@@ -299,20 +299,22 @@ Four stacked curves for the selected worm: **area**, **length**, **speed** and
 **acceleration**. Click or drag anywhere in them to scrub through frames; the
 dot marks where you are.
 
-Area and length are drawn **divided by their own median**, so the y-axis reads
-around 1 and the curve answers the question you actually have — *is the worm
-bigger or smaller than usual right now?* A frame at 1.9 is a worm that doubled,
-whatever the calibration says a pixel is worth, and a bad segmentation shows up
-as a spike instead of hiding inside a large absolute number. Speed and
-acceleration keep their own units, where zero and the sign are the meaning.
+By default every curve shows its real values: pixels, or µm once **Units…**
+is calibrated. Tick **÷ median** to draw area and length divided by their own
+median instead. The y-axis then reads around 1, and the curve answers a
+different question: *is the worm bigger or smaller than usual right now?* A
+frame at 1.9 is a worm that doubled, and a bad segmentation shows up as a
+spike instead of hiding inside a large absolute number. Speed and acceleration
+are never divided, because zero and the sign are what they mean. In Manual
+mode the box applies to the manual length plot in the same way.
 
 The real number is never lost: **hover a curve** and a small box shows the frame
 and the true value, in whatever units **Units…** is set to. The box is placed on
 whichever side of the cursor has room for it — measured against the axes, so at
 the right-hand end of a curve it appears to the left instead of hanging off the
 panel — and it is kept out of the layout calculation, so the plot never shifts
-or shrinks to accommodate it. A worm whose median is zero or missing is drawn
-unchanged rather than divided.
+or shrinks to accommodate it. With ÷ median on, a worm whose median is zero or
+missing is drawn unchanged rather than divided.
 
 Normalization and smoothing are display only — `measurements.csv` always holds
 the raw measured values.

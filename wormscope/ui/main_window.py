@@ -166,7 +166,7 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
                   self.sam_run_btn, self.sam_again_btn, self.sam_mask_btn,
                   self.sam_clear_btn, self.back_box, self.lock_box,
                   self.refresh_btn,
-                  self.units_btn, self.smooth_box, self.list):
+                  self.units_btn, self.smooth_box, self.median_box, self.list):
             w.setEnabled(False)
         self.frame_label.setText("no frames")
         self.info.setText("No video loaded.\n\n“Upload video or image…” "
