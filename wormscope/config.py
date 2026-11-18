@@ -35,6 +35,8 @@ SCALE_LINE_RGB = (255, 210, 90)      # the line drawn on a scale bar (Units…)
 PLAYBACK_FPS = 10          # display speed for playback (not the acquisition FPS)
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 PHOTO_EXTS = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}  # a single image to upload
+VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".m4v", ".wmv", ".mpg", ".mpeg",
+              ".webm"}                 # a video file, decoded into frames on upload
 MAX_PLOTS = 4
 SPEED_METRIC = "speed"                 # centroid speed, px/frame
 ACCEL_METRIC = "acceleration"          # change of speed, px/frame^2

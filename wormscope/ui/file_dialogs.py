@@ -36,15 +36,19 @@ def pick_file(parent, title, start="", file_filter=""):
 
 
 PHOTO_FILTER = "Images (*.png *.jpg *.jpeg *.tif *.tiff)"
+VIDEO_FILTER = "Videos (*.mp4 *.avi *.mov *.mkv *.m4v *.wmv *.mpg *.mpeg *.webm)"
+UPLOAD_FILTERS = ";;".join([
+    "Images and videos (*.png *.jpg *.jpeg *.tif *.tiff *.mp4 *.avi *.mov "
+    "*.mkv *.m4v *.wmv *.mpg *.mpeg *.webm)", PHOTO_FILTER, VIDEO_FILTER])
 
 
 def pick_video_or_image(parent, title, start=""):
-    """A folder of frames (a video) or a single image (a photo).
+    """A folder of frames (a video), a video file, or a single image (a photo).
 
-    Pick an image and press Open for a photo. For a video, go into the folder
+    Pick an image or a video file and press Open. For a folder of frames, go into the folder
     — or just click it — and press “Open folder as video”. Returns the path,
     or "" when cancelled."""
-    dialog = QFileDialog(parent, title, start, PHOTO_FILTER)
+    dialog = QFileDialog(parent, title, start, UPLOAD_FILTERS)
     dialog.setOption(QFileDialog.Option.DontUseNativeDialog)  # needs the extra button
     dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
     dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptOpen)

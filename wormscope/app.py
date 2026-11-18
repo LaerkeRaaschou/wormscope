@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import QApplication
 from .core.geometry import HAVE_SKIMAGE
 from .core.models import empty_dataset
 from .io.loaders import build_raw_dataset, is_photo, load_dataset
+from .io.video import is_video
 from .theme import apply_theme
 from .ui import WINDOWS, MainWindow
 
@@ -23,8 +24,18 @@ def resolve_dataset(path=None):
     path = Path(path).expanduser()
     if is_photo(path):                       # a single image: a one-frame video
         return build_raw_dataset(path) or empty_dataset()
+    if is_video(path):                       # a video file: decoded into frames
+        def report(done, total):
+            if done % 100 == 0:
+                print(f"[video] {done}/{total or '?'} frames")
+            return False
+        try:
+            return build_raw_dataset(path, progress=report) or empty_dataset()
+        except Exception as err:             # noqa: BLE001 - start empty instead
+            print(f"[warn] could not read the video {path}: {err}")
+            return empty_dataset()
     if not path.is_dir():
-        print(f"[warn] {path} is not a folder or an image; starting empty")
+        print(f"[warn] {path} is not a folder, an image or a video; starting empty")
         return empty_dataset()
 
     ds = load_dataset(path) or build_raw_dataset(path)

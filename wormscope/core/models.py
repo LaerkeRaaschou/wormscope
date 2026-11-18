@@ -289,6 +289,7 @@ class Dataset:
     title: str
     frames_dir: Path | None = None   # on-disk frames folder (for SAM2), if any
     session: dict = field(default_factory=dict)   # wormscope.json, if saved before
+    source_fps: float | None = None   # frame rate of the video file it came from
 
     @property
     def is_empty(self) -> bool:

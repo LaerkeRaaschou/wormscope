@@ -1,5 +1,6 @@
 """File-level actions: open / import a dataset, calibrate units, save, export."""
 
+import shutil
 from pathlib import Path
 
 from PyQt6.QtWidgets import QMessageBox
@@ -11,6 +12,7 @@ from ..io.loaders import build_raw_dataset, has_saved_work, load_dataset
 from ..io.manual_lengths import MANUAL_FILE, write_manual_lengths
 from ..io.session import (SCALE_FILE, ensure_frames_in, save_scale_image,
                           write_session)
+from ..io.video import SOURCE_FILE, VideoCancelled, is_video
 from ..io.writers import save_measurements_plot, write_measurements_csv
 from .calibration_dialog import CalibrationDialog
 from .file_dialogs import pick_folder, pick_video_or_image
@@ -90,15 +92,58 @@ class IOActionsMixin:
             return
         # next to the current video's _wormscope folder, where its raw frames are
         start = str(self._data_dir.parent) if self._data_dir else str(Path.home())
-        d = pick_video_or_image(self, "Select an image, or a folder of frames", start)
+        d = pick_video_or_image(
+            self, "Select a video file, an image, or a folder of frames", start)
         if not d:
             return
-        ds = build_raw_dataset(Path(d))
+        if is_video(d):
+            ds = self._decode_video(Path(d))
+            if ds is False:                  # stopped or failed: already said
+                return
+        else:
+            ds = build_raw_dataset(Path(d))
         if ds is None:
             QMessageBox.warning(self, "Upload video or image",
                                 f"No image files found in:\n{d}")
             return
         self._open_dataset(ds)
+
+    def _decode_video(self, video):
+        """Upload a video file: decode it into frames (with progress and a
+        Stop button), then open those frames. False when stopped or failed."""
+        bar = Progress(self, "Reading video", 0,
+                       label=f"Decoding {video.name} into frames…")
+
+        def progress(done, total):
+            if total and total != bar.total:
+                bar.set_total(total)         # the estimate from the file header
+            return bar.step(done, f"{video.name}: {done}/{total} frames")
+
+        try:
+            ds = build_raw_dataset(video, progress=progress)
+        except VideoCancelled:
+            bar.close()
+            print(f"[video] decoding {video.name} stopped")
+            return False
+        except ImportError:
+            bar.close()
+            QMessageBox.warning(self, "Upload video",
+                                "Reading video files needs imageio with ffmpeg:"
+                                "\n\n  pip install imageio imageio-ffmpeg")
+            return False
+        except Exception as err:             # noqa: BLE001 - shown to the user
+            bar.close()
+            # ffmpeg's own report is pages long: its first and last lines say it
+            lines = [x for x in str(err).splitlines() if x.strip()]
+            why = lines[0] if lines else type(err).__name__
+            if len(lines) > 1 and "stderr" in str(err):
+                why += f"\n{lines[-1]}"
+            print(f"[video] could not read {video}: {err}")
+            QMessageBox.warning(self, "Upload video",
+                                f"Could not read the video\n{video}\n\n{why}")
+            return False
+        bar.close()
+        return ds
 
     def _open_dataset(self, ds):
         """Show a fresh window for `ds` and close this one."""
@@ -240,6 +285,9 @@ class IOActionsMixin:
         added = ensure_frames_in(dest, self._frames_dir)
         self.frames.rebase(dest / "frames")
         copied = self.masks.move_to(dest / "binary", dest / "skel")
+        src = self._save_folder() / SOURCE_FILE   # where the frames came from
+        if src.is_file():
+            shutil.copy2(src, dest / SOURCE_FILE)
         print(f"[save as] {dest}: {added} frames, {copied} masks copied")
         self.ds.csv_path = dest / "measurements.csv"
         self.ds.frames_dir = self._frames_dir = dest / "frames"

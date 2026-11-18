@@ -10,6 +10,7 @@ python main.py                       # empty window — open a folder from the G
 python main.py path/to/video_folder  # a folder containing frames/ (and binary/)
 python main.py path/to/raw_frames    # a plain folder of images -> segment with SAM2
 python main.py path/to/photo.tif     # a single image (.png .jpg .jpeg .tif) -> a photo
+python main.py path/to/video.mp4     # a video file -> decoded into frames first
 ```
 
 **Either the folder you name, or nothing at all.** A plain start opens an empty
@@ -338,7 +339,20 @@ everything works the same; it is saved in `<image name>_wormscope/`). In the
 picker, choose an image and press Open, or click a folder and press “Open
 folder as video”.
 
-A video upload creates a sibling `<frames folder>_wormscope/` and
+A **video file** (`.mp4 .avi .mov .mkv .m4v .wmv .mpg .mpeg .webm`) is
+decoded into frames on upload: `<video name>_wormscope/frames/frame_00000.png,
+frame_00001.png, …` (lossless PNG). The progress panel shows how far it has
+got, and **Stop** cancels it without leaving half a folder behind. The frame
+rate stored in the video becomes the fps under Units…, so speeds come out per
+second straight away. `source_video.json` records which file the frames came
+from. Uploading the same, unchanged video again reuses those frames instead of
+decoding it again, as long as nothing has been saved there yet. Once there is
+saved work, a new upload goes in `_wormscope_2/`, as for frames. After that
+the folder is an ordinary video folder, and the video file is never needed or
+modified again. Keep in mind that PNG frames take much more space than the
+compressed video: a long full-HD recording can take several GB.
+
+A folder of frames uploaded as a video creates a sibling `<frames folder>_wormscope/` and
 puts the frames in its `frames/` straight away (hard-linked when on the same
 disk, so no extra space; copied otherwise). That folder alone is the whole
 video from the start: open it with “Continue editing video…” to carry on.
@@ -391,6 +405,7 @@ wormscope/
 │   ├── writers.py         measurements.csv + measurements_plot.png
 │   ├── session.py         wormscope.json, scale.png + putting the frames in the saved folder
 │   ├── manual_lengths.py  manual_lengths.csv: write on Save, read on reopen
+│   ├── video.py           video file upload: decode into frames/, source_video.json
 │   └── export.py          corrected-overlay .mp4 (PNG fallback)
 ├── segmentation/          swappable segmentation backends
 │   ├── __init__.py        SEGMENTER_FACTORY / make_segmenter
@@ -432,6 +447,7 @@ tests/
 wormscope_gui3.py          the original single-file version, kept for reference
 scripts/check_manual_length.py  end-to-end check: Measure tool, modes, manual_lengths.csv, scale.png
 scripts/check_save_as.py   end-to-end check: Save as… moves the whole video
+scripts/check_video_upload.py  end-to-end check: a video file decoded into frames
 ```
 
 ## Where to make a change

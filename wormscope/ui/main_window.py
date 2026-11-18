@@ -113,6 +113,10 @@ class MainWindow(LayoutMixin, RenderMixin, EditingMixin, HistoryMixin,
         self.list.setCurrentRow(-1)          # cleared; _start_with_worm picks one
         self.plot.set_worm(None)
         self._apply_session(self.ds.session)  # settings saved with this video
+        if self.fps is None and self.ds.source_fps:
+            # a video file knows its own frame rate: speeds come out per second
+            self.fps = float(self.ds.source_fps)
+            self.plot.set_scales(self._unit_scales())
         self._update_save_folder()
         self._update_title()
         self._set_annotation_mode(self._initial_annotation_mode(self.ds.session),

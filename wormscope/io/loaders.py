@@ -31,6 +31,7 @@ from ..core.utils import (find_col, last_int, list_images, sort_by_frame_number,
                           to_num)
 from .manual_lengths import MANUAL_FILE, read_manual_lengths
 from .session import SESSION_FILE, ensure_frames_in, read_session
+from .video import extract_frames, frames_from, is_video, read_source
 
 
 def load_image_rgb(path) -> np.ndarray:
@@ -214,7 +215,8 @@ def load_dataset(data_dir: Path) -> Dataset | None:
     return Dataset(frames, worms, names[:MAX_PLOTS], masks, idx_to_key,
                    data_dir / "measurements.csv", f"wormscope — {data_dir.name}",
                    frames_dir=find_frames_dir(data_dir),
-                   session=read_session(data_dir))
+                   session=read_session(data_dir),
+                   source_fps=read_source(data_dir).get("fps"))
 
 
 def attach_manual_lengths(worms, manual):
@@ -276,7 +278,25 @@ def raw_output_dir(frames_dir: Path, files=None) -> Path:
     return candidate
 
 
-def build_raw_dataset(frames_dir: Path) -> Dataset | None:
+def video_output_dir(video: Path) -> Path:
+    """Where an uploaded video file's frames go: '<name>_wormscope' next to it
+    (or '_2', '_3', … when that one holds saved work or another video's
+    frames). A folder holding this same video's frames from an unsaved
+    session is reused, so uploading it twice doesn't decode it twice."""
+    base = video.parent / f"{video.stem}_wormscope"
+    candidate, n = base, 2
+    while True:
+        if not has_saved_work(candidate):
+            if frames_from(candidate, video):
+                return candidate             # same video, frames already there
+            if not list_images(candidate / "frames") \
+                    and not read_source(candidate):
+                return candidate             # nothing there yet
+        candidate = base.with_name(f"{base.name}_{n}")
+        n += 1
+
+
+def build_raw_dataset(frames_dir: Path, progress=None) -> Dataset | None:
     """Start a fresh working dataset from a folder of RAW frames (no masks yet),
     or from a single image: a photo is simply a video of one frame, so
     segmenting, editing, metrics and Save all work the same way.
@@ -286,15 +306,32 @@ def build_raw_dataset(frames_dir: Path) -> Dataset | None:
     hard-linked when on the same disk, copied otherwise — so the raw folder is
     never modified and the _wormscope folder alone is the whole video: it opens
     with “Continue editing video…” from the start. Worms start empty; use the
-    SAM2 point tools (or Add + brush) to create them."""
+    SAM2 point tools (or Add + brush) to create them.
+
+    A video file (.mp4, .avi, .mov, …) is first decoded into
+    '<name>_wormscope/frames/' (see io/video.py); `progress(done, total)`
+    reports that and may return True to stop (VideoCancelled is raised)."""
     frames_dir = Path(frames_dir)
-    if is_photo(frames_dir):
+    source_fps = None
+    from_video = is_video(frames_dir)
+    if from_video:
+        video = frames_dir
+        out_dir = video_output_dir(video)
+        if frames_from(out_dir, video):
+            print(f"[video] reusing the frames already in {out_dir.name}/frames/")
+        else:
+            extract_frames(video, out_dir, progress)
+        source_fps = read_source(out_dir).get("fps")
+        frames_dir = out_dir / "frames"
+        files = sort_by_frame_number(list_images(frames_dir))
+    elif is_photo(frames_dir):
         files = [frames_dir]                 # a photo: one frame
     else:
         files = sort_by_frame_number(list_images(frames_dir))
     if not files:
         return None
-    out_dir = raw_output_dir(frames_dir, files)
+    if not from_video:
+        out_dir = raw_output_dir(frames_dir, files)
     added = ensure_frames_in(out_dir, frames_dir)
     local = out_dir / "frames"
     files = [local / p.name for p in files]  # this upload's frames, from out_dir
@@ -308,9 +345,10 @@ def build_raw_dataset(frames_dir: Path) -> Dataset | None:
     masks = MaskStore(shape, binary_dir=out_dir / "binary",
                       skel_dir=out_dir / "skel", idx_to_stem=idx_to_stem)
     idx_to_key = {idx: k for k, idx in key_to_idx.items()}
-    kind = "photo" if len(files) == 1 and is_photo(frames_dir) else "raw frames"
+    kind = ("photo" if len(files) == 1 and is_photo(frames_dir)
+            else "video frames" if from_video else "raw frames")
     print(f"[import] {len(files)} {kind} from {frames_dir} -> {out_dir} "
           f"({added} put in frames/)")
     return Dataset(src, [], ["area_px", "length_px"], masks, idx_to_key,
                    out_dir / "measurements.csv", f"wormscope — {out_dir.name}",
-                   frames_dir=local)
+                   frames_dir=local, source_fps=source_fps)

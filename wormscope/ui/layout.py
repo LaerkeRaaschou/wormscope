@@ -493,9 +493,10 @@ class LayoutMixin:
         # one that was saved before. "New" comes first — it is how every
         # video starts.
         self.import_btn = QPushButton("Upload video or image…")
-        self.import_btn.setToolTip("A folder of raw frames opens as a video, a "
-                                   "single .png / .jpg / .tif as a photo; segment "
-                                   "them with SAM2 point prompts")
+        self.import_btn.setToolTip("A video file (.mp4 .avi .mov …) is decoded "
+                                   "into frames; a folder of raw frames opens "
+                                   "as a video; a single .png / .jpg / .tif as "
+                                   "a photo")
         self.import_btn.clicked.connect(self._import_raw)
         self.open_btn = QPushButton("Continue editing video…")
         self.open_btn.setToolTip("Open a video you worked on before (a folder "
