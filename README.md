@@ -10,7 +10,7 @@ python main.py                       # empty window — open a folder from the G
 python main.py path/to/video_folder  # a folder containing frames/ (and binary/)
 python main.py path/to/raw_frames    # a plain folder of images -> segment with SAM2
 python main.py path/to/photo.tif     # a single image (.png .jpg .jpeg .tif) -> a photo
-python main.py path/to/video.mp4     # a video file -> decoded into frames first
+python main.py path/to/video.mp4     # a video file -> decoded into frames first (all frames)
 ```
 
 **Either the folder you name, or nothing at all.** A plain start opens an empty
@@ -342,13 +342,31 @@ picker, choose an image and press Open, or click a folder and press “Open
 folder as video”.
 
 A **video file** (`.mp4 .avi .mov .mkv .m4v .wmv .mpg .mpeg .webm`) is
-decoded into frames on upload: `<video name>_wormscope/frames/frame_00000.png,
-frame_00001.png, …` (lossless PNG). The progress panel shows how far it has
-got, and **Stop** cancels it without leaving half a folder behind. The frame
-rate stored in the video becomes the fps under Units…, so speeds come out per
-second straight away. `source_video.json` records which file the frames came
-from. Uploading the same, unchanged video again reuses those frames instead of
-decoding it again, as long as nothing has been saved there yet. Once there is
+decoded into frames on upload. A dialog first shows the video (size, fps,
+frame count, duration) and asks which frames to extract:
+
+* **All frames**, at the video's own frame rate.
+* **Frame rate**, e.g. 5 fps from a 30 fps video. wormscope keeps every n-th
+  frame so the frames stay evenly spaced in time, so the rate is rounded to
+  the nearest fps ÷ n. The dialog shows the rate you get, e.g. "every 4th
+  frame → 7.5 fps".
+* **Random frames**, a number of frames picked at random from the whole
+  video, in time order (e.g. for an annotation set). The **seed** makes the
+  pick reproducible. Random frames are unevenly spaced in time, so they get no
+  frame rate: speed and acceleration are then per frame.
+
+The dialog remembers your last choice. The frames go in
+`<video name>_wormscope/frames/` as lossless PNGs named after their frame
+number **in the video** (`frame_00000.png`, `frame_00004.png`, … for every 4th
+frame), so the frame column of every CSV points straight back to the video.
+The progress panel shows how far it has got, and **Stop** cancels it without
+leaving half a folder behind. The frame rate of the kept frames (the video's
+fps, or fps ÷ n) becomes the fps under Units…, so speeds come out per second
+straight away. `source_video.json` records which file the frames came from,
+the sampling, and both frame rates. Uploading the same, unchanged video again
+with the same choice reuses those frames instead of decoding it again, as long
+as nothing has been saved there yet. With another choice, the frames in that
+unsaved folder are replaced. Once there is
 saved work, a new upload goes in `_wormscope_2/`, as for frames. After that
 the folder is an ordinary video folder, and the video file is never needed or
 modified again. Keep in mind that PNG frames take much more space than the
@@ -407,7 +425,7 @@ wormscope/
 │   ├── writers.py         measurements.csv + measurements_plot.png
 │   ├── session.py         wormscope.json, scale.png + putting the frames in the saved folder
 │   ├── manual_lengths.py  manual_lengths.csv: write on Save, read on reopen
-│   ├── video.py           video file upload: decode into frames/, source_video.json
+│   ├── video.py           video file upload: decode (all / every n-th / random) into frames/
 │   └── export.py          corrected-overlay .mp4 (PNG fallback)
 ├── segmentation/          swappable segmentation backends
 │   ├── __init__.py        SEGMENTER_FACTORY / make_segmenter
@@ -434,6 +452,7 @@ wormscope/
     ├── sam.py             SAM2 point prompts and propagation
     ├── manual_length.py   Measure tool: manual length points, undo, display
     ├── annotation_mode.py Automatic | Manual: which data and tools are shown
+    ├── video_import_dialog.py  Upload video: all frames, a frame rate, or random frames
     ├── io_actions.py      open, import, units, save, export
     └── calibration_dialog.py  Units…: scale image + line -> µm/pixel, and fps
 tests/

@@ -27,6 +27,16 @@ from wormscope.io.loaders import build_raw_dataset, load_dataset
 from wormscope.io.video import VideoCancelled, is_video
 from wormscope.ui import io_actions
 from wormscope.ui.main_window import MainWindow
+from wormscope.ui.video_import_dialog import VideoImportDialog
+from wormscope.io.video import pick_frames, video_info
+
+# The Upload video dialog: answered by `ANSWER` (a function that sets it up)
+ANSWER = [lambda dlg: dlg.all_rb.setChecked(True)]
+SHOWN = []
+def fake_exec(dlg):
+    SHOWN.append(dlg); ANSWER[0](dlg); dlg.accept()
+    return VideoImportDialog.DialogCode.Accepted
+VideoImportDialog.exec = fake_exec
 
 ok = True
 def check(name, cond):
@@ -54,6 +64,7 @@ def spy_step(self, d, label=None):
 io_actions.Progress.step = spy_step
 w0._import_raw()
 io_actions.Progress.step = orig_step
+check("uploading a video asks which frames to extract", len(SHOWN) == 1)
 from wormscope.ui.main_window import WINDOWS
 w = WINDOWS[-1]; w._start_sam = lambda *a, **k: None
 out = tmp / "plate 3_wormscope"
@@ -77,6 +88,64 @@ ds = build_raw_dataset(video, progress=lambda d, t: (_ for _ in ()).throw(Assert
 check("same video again: frames reused, not decoded again",
       ds.csv_path.parent == out
       and (out / "frames" / "frame_00000.png").stat().st_mtime_ns == mt)
+
+# --- the dialog's numbers ---
+dlg = VideoImportDialog(None, video, video_info(video))
+check("dialog shows the video's fps and frame count", dlg.fps == FPS and dlg.n == N)
+dlg.rate_rb.setChecked(True); dlg.rate_spin.setValue(2.0)
+check("2 fps of an 8 fps video = every 4th frame",
+      dlg.sampling() == {"mode": "every", "step": 4} and "2 fps" in dlg.rate_detail.text())
+dlg.rate_spin.setValue(3.0)
+check("3 fps rounds to an evenly spaced rate (every 3rd -> 2.67 fps)",
+      dlg.step() == 3 and "nearest rate" in dlg.rate_detail.text())
+dlg.rate_spin.setValue(8.0)
+check("the full rate is just 'all frames'", dlg.sampling() == {"mode": "all"})
+dlg.random_rb.setChecked(True); dlg.count_spin.setValue(5); dlg.seed_spin.setValue(3)
+check("random: count + seed", dlg.sampling() == {"mode": "random", "count": 5, "seed": 3})
+check("random picks are reproducible and sorted",
+      pick_frames(dlg.sampling(), 24) == pick_frames(dlg.sampling(), 24)
+      == sorted(pick_frames(dlg.sampling(), 24)))
+
+# --- every 4th frame through the window: same unsaved folder, new frames ---
+ANSWER[0] = lambda d: (d.rate_rb.setChecked(True), d.rate_spin.setValue(2.0))
+io_actions.pick_video_or_image = lambda *a, **k: str(video)
+w._import_raw()
+w = WINDOWS[-1]; w._start_sam = lambda *a, **k: None
+names = sorted(p.name for p in (out / "frames").iterdir())
+check("every 4th frame: 6 frames, re-extracted in the same unsaved folder",
+      w._save_folder() == out and w.n == 6 and len(names) == 6)
+check("file names keep the video frame numbers (0, 4, 8, …)",
+      names[:3] == ["frame_00000.png", "frame_00004.png", "frame_00008.png"])
+check("frame numbers in the app are the video's", w.ds.idx_to_key[2] == 8)
+check("fps of the kept frames = 8 / 4 = 2", w.fps == 2.0)
+check("the dialog remembers the last choice",
+      VideoImportDialog(None, video, video_info(video)).sampling()
+      == {"mode": "every", "step": 4})
+
+# --- random frames ---
+ANSWER[0] = lambda d: (d.random_rb.setChecked(True), d.count_spin.setValue(7),
+                       d.seed_spin.setValue(11))
+w._import_raw()
+w = WINDOWS[-1]; w._start_sam = lambda *a, **k: None
+keys = [w.ds.idx_to_key[i] for i in range(w.n)]
+check("7 random frames, in time order", w.n == 7 and keys == sorted(keys)
+      and keys == pick_frames({"mode": "random", "count": 7, "seed": 11}, N))
+check("random frames: no frame rate", w.fps is None)
+src = json.loads((out / "source_video.json").read_text())
+check("source_video.json records the sampling",
+      src["sampling"] == {"mode": "random", "count": 7, "seed": 11}
+      and src["video_frames"] == N and src["video_fps"] == FPS)
+# cancelling the dialog does nothing
+n_windows = len(WINDOWS)
+VideoImportDialog.exec = lambda dlg: VideoImportDialog.DialogCode.Rejected
+w._import_raw()
+check("Cancel in the dialog opens nothing", len(WINDOWS) == n_windows)
+VideoImportDialog.exec = fake_exec
+
+# back to all frames for the rest
+ANSWER[0] = lambda d: d.all_rb.setChecked(True)
+w._import_raw()
+w = WINDOWS[-1]; w._start_sam = lambda *a, **k: None
 
 # --- after Save, an upload starts fresh next to it ---
 w._set_annotation_mode("manual")

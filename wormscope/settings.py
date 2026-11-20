@@ -28,6 +28,7 @@ DEFAULTS = {
     "last_update_check": "",  # date of the last look (once a day at most)
     "annotation_mode": "",    # last Automatic / Manual choice ("" = automatic)
     "save_dir": "",           # where Save as… last put a video (its parent folder)
+    "video_sampling": {},     # last choice in the Upload video dialog
 }
 
 

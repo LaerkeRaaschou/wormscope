@@ -12,11 +12,12 @@ from ..io.loaders import build_raw_dataset, has_saved_work, load_dataset
 from ..io.manual_lengths import MANUAL_FILE, write_manual_lengths
 from ..io.session import (SCALE_FILE, ensure_frames_in, save_scale_image,
                           write_session)
-from ..io.video import SOURCE_FILE, VideoCancelled, is_video
+from ..io.video import SOURCE_FILE, VideoCancelled, is_video, video_info
 from ..io.writers import save_measurements_plot, write_measurements_csv
 from .calibration_dialog import CalibrationDialog
 from .file_dialogs import pick_folder, pick_video_or_image
 from .progress import Progress
+from .video_import_dialog import VideoImportDialog
 
 
 def save_as_target(picked: Path, current: Path) -> Path:
@@ -109,8 +110,23 @@ class IOActionsMixin:
         self._open_dataset(ds)
 
     def _decode_video(self, video):
-        """Upload a video file: decode it into frames (with progress and a
-        Stop button), then open those frames. False when stopped or failed."""
+        """Upload a video file: ask which frames to keep (all, a lower frame
+        rate, or random ones), decode them (with progress and a Stop button),
+        then open them. False when cancelled, stopped or failed."""
+        try:
+            info = video_info(video)
+        except ImportError:
+            QMessageBox.warning(self, "Upload video",
+                                "Reading video files needs imageio with ffmpeg:"
+                                "\n\n  pip install imageio imageio-ffmpeg")
+            return False
+        except Exception as err:             # noqa: BLE001 - shown to the user
+            self._video_error(video, err)
+            return False
+        dlg = VideoImportDialog(self, video, info)
+        if dlg.exec() != VideoImportDialog.DialogCode.Accepted:
+            return False
+        sampling = dlg.sampling()
         bar = Progress(self, "Reading video", 0,
                        label=f"Decoding {video.name} into frames…")
 
@@ -120,7 +136,7 @@ class IOActionsMixin:
             return bar.step(done, f"{video.name}: {done}/{total} frames")
 
         try:
-            ds = build_raw_dataset(video, progress=progress)
+            ds = build_raw_dataset(video, progress=progress, sampling=sampling)
         except VideoCancelled:
             bar.close()
             print(f"[video] decoding {video.name} stopped")
@@ -133,17 +149,20 @@ class IOActionsMixin:
             return False
         except Exception as err:             # noqa: BLE001 - shown to the user
             bar.close()
-            # ffmpeg's own report is pages long: its first and last lines say it
-            lines = [x for x in str(err).splitlines() if x.strip()]
-            why = lines[0] if lines else type(err).__name__
-            if len(lines) > 1 and "stderr" in str(err):
-                why += f"\n{lines[-1]}"
-            print(f"[video] could not read {video}: {err}")
-            QMessageBox.warning(self, "Upload video",
-                                f"Could not read the video\n{video}\n\n{why}")
+            self._video_error(video, err)
             return False
         bar.close()
         return ds
+
+    def _video_error(self, video, err):
+        # ffmpeg's own report is pages long: its first and last lines say it
+        lines = [x for x in str(err).splitlines() if x.strip()]
+        why = lines[0] if lines else type(err).__name__
+        if len(lines) > 1 and "stderr" in str(err):
+            why += f"\n{lines[-1]}"
+        print(f"[video] could not read {video}: {err}")
+        QMessageBox.warning(self, "Upload video",
+                            f"Could not read the video\n{video}\n\n{why}")
 
     def _open_dataset(self, ds):
         """Show a fresh window for `ds` and close this one."""

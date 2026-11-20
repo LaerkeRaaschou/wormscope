@@ -31,7 +31,8 @@ from ..core.utils import (find_col, last_int, list_images, sort_by_frame_number,
                           to_num)
 from .manual_lengths import MANUAL_FILE, read_manual_lengths
 from .session import SESSION_FILE, ensure_frames_in, read_session
-from .video import extract_frames, frames_from, is_video, read_source
+from .video import (extract_frames, frames_from, is_video, read_source,
+                    same_video)
 
 
 def load_image_rgb(path) -> np.ndarray:
@@ -282,13 +283,14 @@ def video_output_dir(video: Path) -> Path:
     """Where an uploaded video file's frames go: '<name>_wormscope' next to it
     (or '_2', '_3', … when that one holds saved work or another video's
     frames). A folder holding this same video's frames from an unsaved
-    session is reused, so uploading it twice doesn't decode it twice."""
+    session is reused: its frames are kept when the sampling is the same, and
+    replaced when another sampling was chosen."""
     base = video.parent / f"{video.stem}_wormscope"
     candidate, n = base, 2
     while True:
         if not has_saved_work(candidate):
-            if frames_from(candidate, video):
-                return candidate             # same video, frames already there
+            if same_video(candidate, video):
+                return candidate             # this video, nothing saved yet
             if not list_images(candidate / "frames") \
                     and not read_source(candidate):
                 return candidate             # nothing there yet
@@ -296,7 +298,8 @@ def video_output_dir(video: Path) -> Path:
         n += 1
 
 
-def build_raw_dataset(frames_dir: Path, progress=None) -> Dataset | None:
+def build_raw_dataset(frames_dir: Path, progress=None,
+                      sampling=None) -> Dataset | None:
     """Start a fresh working dataset from a folder of RAW frames (no masks yet),
     or from a single image: a photo is simply a video of one frame, so
     segmenting, editing, metrics and Save all work the same way.
@@ -309,7 +312,8 @@ def build_raw_dataset(frames_dir: Path, progress=None) -> Dataset | None:
     SAM2 point tools (or Add + brush) to create them.
 
     A video file (.mp4, .avi, .mov, …) is first decoded into
-    '<name>_wormscope/frames/' (see io/video.py); `progress(done, total)`
+    '<name>_wormscope/frames/' (see io/video.py), keeping the frames
+    `sampling` asks for (all of them by default); `progress(done, total)`
     reports that and may return True to stop (VideoCancelled is raised)."""
     frames_dir = Path(frames_dir)
     source_fps = None
@@ -317,10 +321,10 @@ def build_raw_dataset(frames_dir: Path, progress=None) -> Dataset | None:
     if from_video:
         video = frames_dir
         out_dir = video_output_dir(video)
-        if frames_from(out_dir, video):
+        if frames_from(out_dir, video, sampling):
             print(f"[video] reusing the frames already in {out_dir.name}/frames/")
         else:
-            extract_frames(video, out_dir, progress)
+            extract_frames(video, out_dir, progress, sampling)
         source_fps = read_source(out_dir).get("fps")
         frames_dir = out_dir / "frames"
         files = sort_by_frame_number(list_images(frames_dir))
